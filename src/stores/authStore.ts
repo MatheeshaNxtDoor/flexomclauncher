@@ -73,8 +73,10 @@ declare global {
         downloadUpdate: () => Promise<void>
         installUpdate: () => Promise<void>
         onUpdateAvailable: (callback: (info: any) => void) => () => void
+        onUpdateNotAvailable: (callback: () => void) => () => void
         onDownloadProgress: (callback: (progress: any) => void) => () => void
         onUpdateDownloaded: (callback: () => void) => () => void
+        onError: (callback: (msg: string) => void) => () => void
       }
       app: {
         getInfo: () => Promise<{ version: string; name: string; isDev: boolean }>

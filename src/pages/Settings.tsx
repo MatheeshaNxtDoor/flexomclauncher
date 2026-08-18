@@ -21,6 +21,10 @@ export default function Settings() {
   const [activeSection, setActiveSection] = useState('general')
   const { accounts, currentAccount, removeAccount, switchAccount } = useAuthStore()
   const [appInfo, setAppInfo] = useState({ version: '1.0.0', name: 'Flexo Launcher', isDev: false })
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'>('idle')
+  const [updateInfo, setUpdateInfo] = useState<any>(null)
+  const [updateProgress, setUpdateProgress] = useState<any>(null)
+  const [updateError, setUpdateError] = useState('')
   const [settings, setSettings] = useState<Settings>({
     javaPath: '',
     maxMemory: 4096,
@@ -41,6 +45,29 @@ export default function Settings() {
         jvmArgs: (s.jvmArgs || []).join(' '),
       })
     })
+
+    const unsubs = [
+      window.electronAPI.updater.onUpdateAvailable((info: any) => {
+        setUpdateStatus('available')
+        setUpdateInfo(info)
+      }),
+      window.electronAPI.updater.onUpdateNotAvailable(() => {
+        setUpdateStatus('not-available')
+      }),
+      window.electronAPI.updater.onDownloadProgress((progress: any) => {
+        setUpdateStatus('downloading')
+        setUpdateProgress(progress)
+      }),
+      window.electronAPI.updater.onUpdateDownloaded(() => {
+        setUpdateStatus('downloaded')
+      }),
+      window.electronAPI.updater.onError((msg: string) => {
+        setUpdateStatus('error')
+        setUpdateError(msg)
+      }),
+    ]
+
+    return () => unsubs.forEach(unsub => unsub())
   }, [])
 
   const handleSave = async () => {
@@ -58,6 +85,18 @@ export default function Settings() {
   const updateSetting = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }))
     setSaved(false)
+  }
+
+  const handleCheckForUpdates = async () => {
+    setUpdateStatus('checking')
+    setUpdateError('')
+    setUpdateProgress(null)
+    setUpdateInfo(null)
+    await window.electronAPI.updater.checkForUpdates()
+  }
+
+  const handleInstallUpdate = () => {
+    window.electronAPI.updater.installUpdate()
   }
 
   return (
@@ -97,14 +136,68 @@ export default function Settings() {
             <p className="text-sm text-surface-400 mb-6">Configure general launcher settings</p>
 
             <SettingsGroup title="Updates">
-              <SettingsRow
-                label="Auto-update"
-                description="Automatically check for updates on startup"
-              >
-                <div className="w-10 h-6 rounded-full bg-flexo-500 flex items-center justify-end px-1 cursor-pointer">
-                  <div className="w-4 h-4 rounded-full bg-white" />
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h4 className="text-sm font-medium text-white">Check for Updates</h4>
+                    <p className="text-xs text-surface-500 mt-0.5">
+                      Current version: {appInfo.version}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleCheckForUpdates}
+                    disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
+                    className="px-4 py-2 rounded-lg bg-flexo-500 hover:bg-flexo-600 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {updateStatus === 'checking' ? 'Checking...' : 'Check for Updates'}
+                  </button>
                 </div>
-              </SettingsRow>
+
+                {updateStatus === 'not-available' && (
+                  <div className="p-3 rounded-lg bg-green-500/10 text-green-400 text-xs">
+                    You are running the latest version.
+                  </div>
+                )}
+
+                {updateStatus === 'available' && updateInfo && (
+                  <div className="p-3 rounded-lg bg-blue-500/10 text-blue-400 text-xs">
+                    Update available: v{updateInfo.version}
+                  </div>
+                )}
+
+                {updateStatus === 'downloading' && updateProgress && (
+                  <div className="p-3 rounded-lg bg-surface-800 text-surface-300 text-xs">
+                    <div className="flex items-center justify-between mb-1">
+                      <span>Downloading update...</span>
+                      <span>{Math.round(updateProgress.percent || 0)}%</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-surface-700 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-flexo-500 transition-all duration-300"
+                        style={{ width: `${updateProgress.percent || 0}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {updateStatus === 'downloaded' && (
+                  <div className="p-3 rounded-lg bg-green-500/10 text-green-400 text-xs flex items-center justify-between">
+                    <span>Update downloaded! It will install when you restart the launcher.</span>
+                    <button
+                      onClick={handleInstallUpdate}
+                      className="px-3 py-1.5 rounded-lg bg-flexo-500 hover:bg-flexo-600 text-white text-xs font-medium transition-colors ml-3 shrink-0"
+                    >
+                      Restart Now
+                    </button>
+                  </div>
+                )}
+
+                {updateStatus === 'error' && (
+                  <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-xs">
+                    Update check failed: {updateError || 'Unknown error'}
+                  </div>
+                )}
+              </div>
             </SettingsGroup>
           </div>
         )}

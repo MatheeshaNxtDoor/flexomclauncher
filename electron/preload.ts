@@ -71,8 +71,10 @@ export interface ElectronAPI {
     downloadUpdate: () => Promise<void>
     installUpdate: () => Promise<void>
     onUpdateAvailable: (callback: (info: any) => void) => () => void
+    onUpdateNotAvailable: (callback: () => void) => () => void
     onDownloadProgress: (callback: (progress: any) => void) => () => void
     onUpdateDownloaded: (callback: () => void) => () => void
+    onError: (callback: (msg: string) => void) => () => void
   }
   app: {
     getInfo: () => Promise<{ version: string; name: string; isDev: boolean }>
@@ -155,8 +157,10 @@ const electronAPI: ElectronAPI = {
     downloadUpdate: () => ipcRenderer.invoke('updater:download-update'),
     installUpdate: () => ipcRenderer.invoke('updater:install-update'),
     onUpdateAvailable: (callback) => onEvent('updater:update-available', callback),
+    onUpdateNotAvailable: (callback) => onEvent('updater:update-not-available', callback),
     onDownloadProgress: (callback) => onEvent('updater:download-progress', callback),
     onUpdateDownloaded: (callback) => onEvent('updater:update-downloaded', callback),
+    onError: (callback) => onEvent('updater:error', callback),
   },
   app: {
     getInfo: () => ipcRenderer.invoke('app:get-info'),

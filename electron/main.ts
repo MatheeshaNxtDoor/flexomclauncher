@@ -9,6 +9,7 @@ import { MinecraftService } from './services/minecraft'
 import { ModrinthService } from './services/modrinth'
 import { AuthlibService } from './services/authlib'
 import { DownloadManager } from './services/downloads'
+import { autoUpdater } from 'electron-updater'
 
 const logFile = path.join(app.getPath('userData'), 'launcher.log')
 function log(msg: string) {
@@ -318,22 +319,18 @@ function initializeServices() {
 
   ipcMain.handle('updater:check-for-updates', async () => {
     try {
-      const { autoUpdater } = await import('electron-updater')
-      autoUpdater.autoDownload = true
-      autoUpdater.autoInstallOnAppQuit = true
       const result = await autoUpdater.checkForUpdates()
       return result
     } catch (e: any) {
       log(`UPDATE CHECK FAILED: ${e.message}`)
+      sendToRenderer('updater:error', e.message)
       return null
     }
   })
   ipcMain.handle('updater:download-update', async () => {
-    const { autoUpdater } = await import('electron-updater')
     await autoUpdater.downloadUpdate()
   })
-  ipcMain.handle('updater:install-update', async () => {
-    const { autoUpdater } = await import('electron-updater')
+  ipcMain.handle('updater:install-update', () => {
     autoUpdater.quitAndInstall()
   })
 
@@ -348,36 +345,37 @@ app.whenReady().then(async () => {
   initializeServices()
   log('Initialization complete')
 
-  // Auto-update: check on startup (non-blocking)
+  // Auto-update: configure once, check on startup (non-blocking)
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.logger = {
+    info: (msg: string) => log(`[updater] ${msg}`),
+    warn: (msg: string) => log(`[updater] ${msg}`),
+    error: (msg: string) => log(`[updater] ${msg}`),
+    debug: (msg: string) => log(`[updater:debug] ${msg}`),
+  } as any
+  autoUpdater.on('update-available', (info) => {
+    log(`UPDATE AVAILABLE: ${info.version}`)
+    sendToRenderer('updater:update-available', info)
+  })
+  autoUpdater.on('update-not-available', () => {
+    log('UPDATE: already up to date')
+    sendToRenderer('updater:update-not-available')
+  })
+  autoUpdater.on('download-progress', (progress) => {
+    sendToRenderer('updater:download-progress', progress)
+  })
+  autoUpdater.on('update-downloaded', () => {
+    log('UPDATE: downloaded, will install on quit')
+    sendToRenderer('updater:update-downloaded')
+  })
+  autoUpdater.on('error', (err) => {
+    log(`UPDATE ERROR: ${err.message}`)
+    sendToRenderer('updater:error', err.message)
+  })
+
   setTimeout(async () => {
     try {
-      const { autoUpdater } = await import('electron-updater')
-      autoUpdater.autoDownload = true
-      autoUpdater.autoInstallOnAppQuit = true
-      autoUpdater.logger = {
-        info: (msg: string) => log(`[updater] ${msg}`),
-        warn: (msg: string) => log(`[updater] ${msg}`),
-        error: (msg: string) => log(`[updater] ${msg}`),
-        debug: () => {},
-      } as any
-      autoUpdater.on('update-available', (info) => {
-        log(`UPDATE AVAILABLE: ${info.version}`)
-        sendToRenderer('updater:update-available', info)
-      })
-      autoUpdater.on('update-not-available', () => {
-        log('UPDATE: already up to date')
-        sendToRenderer('updater:update-not-available')
-      })
-      autoUpdater.on('download-progress', (progress) => {
-        sendToRenderer('updater:download-progress', progress)
-      })
-      autoUpdater.on('update-downloaded', () => {
-        log('UPDATE: downloaded, will install on quit')
-        sendToRenderer('updater:update-downloaded')
-      })
-      autoUpdater.on('error', (err) => {
-        log(`UPDATE ERROR: ${err.message}`)
-      })
       const result = await autoUpdater.checkForUpdates()
       log(`UPDATE CHECK: ${result?.updateInfo?.version || 'no update found'}`)
     } catch (e: any) {
