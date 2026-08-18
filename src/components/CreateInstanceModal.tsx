@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useInstanceStore } from '../stores/instanceStore'
 
-const MINECRAFT_VERSIONS = [
-  '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21',
-  '1.20.6', '1.20.4', '1.20.2', '1.20.1', '1.20',
-  '1.19.4', '1.19.2', '1.18.2',
-]
+interface VersionEntry {
+  id: string
+  type: 'release' | 'snapshot' | 'old_beta' | 'old_alpha'
+  releaseTime: string
+}
 
 const MOD_LOADERS = [
   { id: 'vanilla', label: 'Vanilla', description: 'No mod loader' },
@@ -24,6 +24,24 @@ export default function CreateInstanceModal({ onClose }: { onClose: () => void }
   const [isSettingUp, setIsSettingUp] = useState(false)
   const [setupStatus, setSetupStatus] = useState('')
   const [step, setStep] = useState<'name' | 'version' | 'loader'>('name')
+  const [versions, setVersions] = useState<VersionEntry[]>([])
+  const [versionsLoading, setVersionsLoading] = useState(true)
+  const [versionFilter, setVersionFilter] = useState<'release' | 'snapshot'>('release')
+
+  useEffect(() => {
+    let cancelled = false
+    window.electronAPI.minecraft.getVersionManifest().then((manifest) => {
+      if (!cancelled && manifest?.versions) {
+        setVersions(manifest.versions)
+        const latestRelease = manifest.versions.find((v: VersionEntry) => v.type === 'release')
+        if (latestRelease) setVersion(latestRelease.id)
+        setVersionsLoading(false)
+      }
+    }).catch(() => setVersionsLoading(false))
+    return () => { cancelled = true }
+  }, [])
+
+  const filteredVersions = versions.filter((v) => v.type === versionFilter)
 
   const handleCreate = async () => {
     if (!name.trim()) return
@@ -111,21 +129,52 @@ export default function CreateInstanceModal({ onClose }: { onClose: () => void }
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-medium text-surface-400 mb-1.5 block">Minecraft Version</label>
-                <div className="grid grid-cols-5 gap-1.5 max-h-48 overflow-y-auto">
-                  {MINECRAFT_VERSIONS.map((v) => (
-                    <button
-                      key={v}
-                      onClick={() => setVersion(v)}
-                      className={`px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                        version === v
-                          ? 'bg-flexo-500/20 text-flexo-400 border border-flexo-500/30'
-                          : 'bg-surface-800 text-surface-300 border border-surface-700 hover:border-surface-600'
-                      }`}
-                    >
-                      {v}
-                    </button>
-                  ))}
+                <div className="flex gap-2 mb-3">
+                  <button
+                    onClick={() => setVersionFilter('release')}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                      versionFilter === 'release'
+                        ? 'bg-flexo-500/20 text-flexo-400 border border-flexo-500/30'
+                        : 'bg-surface-800 text-surface-300 border border-surface-700 hover:border-surface-600'
+                    }`}
+                  >
+                    Releases
+                  </button>
+                  <button
+                    onClick={() => setVersionFilter('snapshot')}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                      versionFilter === 'snapshot'
+                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                        : 'bg-surface-800 text-surface-300 border border-surface-700 hover:border-surface-600'
+                    }`}
+                  >
+                    Snapshots
+                  </button>
                 </div>
+                {versionsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="w-6 h-6 border-2 border-flexo-400/30 border-t-flexo-400 rounded-full animate-spin" />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-4 gap-1.5 max-h-56 overflow-y-auto pr-1">
+                    {filteredVersions.map((v) => (
+                      <button
+                        key={v.id}
+                        onClick={() => setVersion(v.id)}
+                        className={`px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                          version === v.id
+                            ? 'bg-flexo-500/20 text-flexo-400 border border-flexo-500/30'
+                            : 'bg-surface-800 text-surface-300 border border-surface-700 hover:border-surface-600'
+                        }`}
+                      >
+                        {v.id}
+                      </button>
+                    ))}
+                    {filteredVersions.length === 0 && (
+                      <p className="col-span-4 text-center text-surface-500 text-xs py-4">No versions found</p>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex justify-between">
                 <button

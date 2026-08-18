@@ -91,7 +91,7 @@ function initializeServices() {
   const accountStore = new AccountStore(userDataPath)
   const instanceStore = new InstanceStore(userDataPath)
   const discordAuth = new DiscordAuthService()
-  const launcherSvc = new LauncherService(userDataPath)
+  const launcherSvc = new LauncherService()
   const minecraftSvc = new MinecraftService(userDataPath)
   const modrinthSvc = new ModrinthService(userDataPath)
   const authlibSvc = new AuthlibService(userDataPath)
@@ -176,6 +176,10 @@ function initializeServices() {
     })
 
     if (instanceStore.getInstance(instanceId)?.modLoader !== 'vanilla') {
+      sendToRenderer('instance:setup-progress', { instanceId, step: 'Downloading authlib-injector...' })
+      await authlibSvc.downloadAuthlibInjector()
+    }
+    if (accountStore.getCurrentAccount()?.type === 'discord') {
       sendToRenderer('instance:setup-progress', { instanceId, step: 'Downloading authlib-injector...' })
       await authlibSvc.downloadAuthlibInjector()
     }

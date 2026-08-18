@@ -456,36 +456,37 @@ export class MinecraftService {
   }
 
   private async downloadFile(url: string, destPath: string, expectedSha1?: string): Promise<void> {
+    const destDir = path.dirname(destPath)
+    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true })
+
     const tempPath = destPath + '.tmp'
     const res = await fetch(url)
     if (!res.ok) throw new Error(`Download failed: ${url} (${res.status})`)
 
-    const fileStream = createWriteStream(tempPath)
     const reader = res.body?.getReader()
     if (!reader) throw new Error('No response body')
 
     const hash = crypto.createHash('sha1')
+    const chunks: Buffer[] = []
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      fileStream.write(value)
+      chunks.push(Buffer.from(value))
       hash.update(value)
     }
-    fileStream.end()
+    const buffer = Buffer.concat(chunks)
 
-    await new Promise<void>((resolve, reject) => {
-      fileStream.on('finish', resolve)
-      fileStream.on('error', reject)
-    })
+    fs.writeFileSync(tempPath, buffer)
 
     if (expectedSha1) {
       const actual = hash.digest('hex')
       if (actual !== expectedSha1) {
-        fs.unlinkSync(tempPath)
+        try { fs.unlinkSync(tempPath) } catch {}
         throw new Error(`SHA1 mismatch for ${path.basename(destPath)}: expected ${expectedSha1}, got ${actual}`)
       }
     }
 
+    if (fs.existsSync(destPath)) fs.unlinkSync(destPath)
     fs.renameSync(tempPath, destPath)
   }
 }
