@@ -303,16 +303,25 @@ export class MinecraftService {
     let allowed = false
     for (const rule of rules) {
       if (rule.action === 'allow') {
-        if (!rule.os || this.matchesOS(rule.os)) {
-          allowed = true
-        }
+        let matches = true
+        if (rule.os) matches = this.matchesOS(rule.os)
+        if (rule.features) matches = this.matchesFeatures(rule.features)
+        if (matches) allowed = true
       } else if (rule.action === 'deny') {
-        if (!rule.os || this.matchesOS(rule.os)) {
-          return false
-        }
+        let matches = true
+        if (rule.os) matches = this.matchesOS(rule.os)
+        if (rule.features) matches = this.matchesFeatures(rule.features)
+        if (matches) return false
       }
     }
     return allowed
+  }
+
+  private matchesFeatures(features: Record<string, { value: boolean }>): boolean {
+    for (const [key, expected] of Object.entries(features)) {
+      if ((this as any)[`feature_${key}`] !== expected.value) return false
+    }
+    return true
   }
 
   private matchesOS(os: any): boolean {
@@ -404,17 +413,36 @@ export class MinecraftService {
         for (const [key, value] of Object.entries(placeholders)) {
           resolved = resolved.replaceAll(key, value)
         }
-        args.push(resolved)
+        if (resolved && !resolved.includes('${')) {
+          args.push(resolved)
+        }
       } else if (arg.rules && this.evaluateRules(arg.rules)) {
         if (typeof arg.value === 'string') {
-          args.push(arg.value)
+          if (arg.value) args.push(arg.value)
         } else if (Array.isArray(arg.value)) {
-          args.push(...arg.value)
+          const resolved = arg.value.map((v: string) => {
+            let r = v
+            for (const [key, value] of Object.entries(placeholders)) {
+              r = r.replaceAll(key, value)
+            }
+            return r
+          }).filter((v: string) => v && !v.includes('${'))
+          args.push(...resolved)
         }
       }
     }
 
-    return args
+    const filtered: string[] = []
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === '' || args[i] === '""') continue
+      if (args[i].startsWith('--quickPlay') && (i + 1 < args.length) && (args[i + 1] === '' || args[i + 1] === '""' || args[i + 1].includes('${'))) {
+        i++
+        continue
+      }
+      filtered.push(args[i])
+    }
+
+    return filtered
   }
 
   buildJvmArgs(
