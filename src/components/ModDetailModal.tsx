@@ -46,7 +46,11 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
     }
 
     try {
-      const modsDir = `${instance.gameDirectory}/mods`
+      const projectType = mod.projectType || 'mod'
+      const subDir = projectType === 'shader' ? 'shaderpacks'
+        : projectType === 'resourcepack' ? 'resourcepacks'
+        : 'mods'
+      const modsDir = `${instance.gameDirectory}/${subDir}`
       const version = versions.find(v => v.id === selectedVersionId)
 
       const downloadId = `mod-${mod.id}-${Date.now()}`
@@ -61,10 +65,10 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
         eta: 0,
         instanceId: selectedInstanceId,
         startedAt: Date.now(),
-        type: 'mod',
+        type: projectType as any,
       })
 
-      setInstallStatus('Downloading mod file...')
+      setInstallStatus('Downloading...')
       await window.electronAPI.marketplace.installMod(mod.id, selectedVersionId, modsDir)
 
       await window.electronAPI.instances.addMod(selectedInstanceId, {

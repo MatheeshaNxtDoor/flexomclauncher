@@ -19,32 +19,39 @@ export interface Mod {
   projectType?: string
 }
 
+export type ProjectType = 'all' | 'mod' | 'modpack' | 'shader' | 'resourcepack' | 'datapack'
+
 interface MarketplaceState {
   mods: Mod[]
   searchQuery: string
   selectedSource: 'all' | 'modrinth' | 'curseforge'
-  selectedCategory: string | null
+  selectedProjectType: ProjectType
   isLoading: boolean
   error: string | null
   searchMods: (query: string) => Promise<void>
   setSource: (source: 'all' | 'modrinth' | 'curseforge') => void
-  setCategory: (category: string | null) => void
-  loadPopularMods: () => Promise<void>
+  setProjectType: (type: ProjectType) => void
+  loadPopularMods: (projectType?: ProjectType) => Promise<void>
   installMod: (projectId: string, versionId: string, targetDir: string) => Promise<string>
 }
 
-export const useMarketplaceStore = create<MarketplaceState>((set) => ({
+export const useMarketplaceStore = create<MarketplaceState>((set, get) => ({
   mods: [],
   searchQuery: '',
   selectedSource: 'all',
-  selectedCategory: null,
+  selectedProjectType: 'mod',
   isLoading: false,
   error: null,
 
   searchMods: async (query: string) => {
+    const { selectedProjectType } = get()
     set({ isLoading: true, searchQuery: query, error: null })
     try {
-      const result = await window.electronAPI.marketplace.search(query, { limit: 20 })
+      const filters: any = { limit: 20 }
+      if (query) filters.query = query
+      if (selectedProjectType !== 'all') filters.projectType = selectedProjectType
+
+      const result = await window.electronAPI.marketplace.search(query || '', filters)
       const mods: Mod[] = (result.hits || []).map((hit: any) => ({
         id: hit.project_id,
         slug: hit.slug,
@@ -68,15 +75,16 @@ export const useMarketplaceStore = create<MarketplaceState>((set) => ({
   },
 
   setSource: (source) => set({ selectedSource: source }),
-  setCategory: (category) => set({ selectedCategory: category }),
+  setProjectType: (type) => set({ selectedProjectType: type }),
 
-  loadPopularMods: async () => {
+  loadPopularMods: async (projectType?: ProjectType) => {
+    const type = projectType || get().selectedProjectType
     set({ isLoading: true, error: null })
     try {
-      const result = await window.electronAPI.marketplace.search('', {
-        categories: ['fabric', 'forge', 'neoforge'],
-        limit: 20,
-      })
+      const filters: any = { limit: 20 }
+      if (type !== 'all') filters.projectType = type
+
+      const result = await window.electronAPI.marketplace.search('', filters)
       const mods: Mod[] = (result.hits || []).map((hit: any) => ({
         id: hit.project_id,
         slug: hit.slug,

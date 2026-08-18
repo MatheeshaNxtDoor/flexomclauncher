@@ -93,6 +93,7 @@ export class ModrinthService {
 
   async searchMods(query: string, filters?: {
     categories?: string[]
+    projectType?: string
     gameVersion?: string
     loader?: string
     limit?: number
@@ -105,8 +106,18 @@ export class ModrinthService {
       offset: String(filters?.offset || 0),
     })
 
+    const facets: any[][] = []
+
+    if (filters?.projectType && filters.projectType !== 'all') {
+      facets.push([`project_type:${filters.projectType}`])
+    }
+
     if (filters?.categories?.length) {
-      params.set('facets', JSON.stringify([filters.categories.map(c => `categories:${c}`)]))
+      facets.push(filters.categories.map(c => `categories:${c}`))
+    }
+
+    if (facets.length > 0) {
+      params.set('facets', JSON.stringify(facets))
     }
 
     if (filters?.gameVersion) params.set('game_versions', `["${filters.gameVersion}"]`)

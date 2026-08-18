@@ -1,38 +1,51 @@
 import { useEffect, useState } from 'react'
-import { useMarketplaceStore, Mod } from '../stores/marketplaceStore'
+import { useMarketplaceStore, Mod, ProjectType } from '../stores/marketplaceStore'
 import ModDetailModal from '../components/ModDetailModal'
+import ModpackInstallModal from '../components/ModpackInstallModal'
 
-const CATEGORIES = [
-  { id: 'all', label: 'All' },
-  { id: 'fabric', label: 'Fabric' },
-  { id: 'forge', label: 'Forge' },
-  { id: 'neoforge', label: 'NeoForge' },
-  { id: 'performance', label: 'Performance' },
-  { id: 'optimization', label: 'Optimization' },
-  { id: 'utility', label: 'Utility' },
-  { id: 'decoration', label: 'Decoration' },
-  { id: 'magic', label: 'Magic' },
-  { id: 'technology', label: 'Technology' },
-  { id: 'adventure', label: 'Adventure' },
-  { id: 'worldgen', label: 'World Generation' },
+const PROJECT_TYPES: { id: ProjectType; label: string; icon: string }[] = [
+  { id: 'mod', label: 'Mods', icon: 'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z' },
+  { id: 'modpack', label: 'Modpacks', icon: 'M4 6h16M4 10h16M4 14h16M4 18h16' },
+  { id: 'shader', label: 'Shaders', icon: 'M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83' },
+  { id: 'resourcepack', label: 'Resource Packs', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
+  { id: 'datapack', label: 'Datapacks', icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' },
 ]
 
 export default function Marketplace() {
-  const { mods, isLoading, searchQuery, selectedSource, searchMods, setSource, loadPopularMods } = useMarketplaceStore()
+  const { mods, isLoading, searchMods, selectedProjectType, loadPopularMods } = useMarketplaceStore()
   const [query, setQuery] = useState('')
   const [selectedMod, setSelectedMod] = useState<Mod | null>(null)
-  const [selectedCategory, setSelectedCategory] = useState('all')
+  const [selectedModpack, setSelectedModpack] = useState<Mod | null>(null)
+  const [projectType, setProjectType] = useState<ProjectType>('mod')
 
   useEffect(() => {
-    loadPopularMods()
-  }, [])
+    loadPopularMods(projectType)
+  }, [projectType])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     if (query.trim()) {
       searchMods(query)
     } else {
-      loadPopularMods()
+      loadPopularMods(projectType)
+    }
+  }
+
+  const handleTypeChange = (type: ProjectType) => {
+    setProjectType(type)
+    useMarketplaceStore.getState().setProjectType(type)
+    if (query.trim()) {
+      searchMods(query)
+    } else {
+      loadPopularMods(type)
+    }
+  }
+
+  const handleModClick = (mod: Mod) => {
+    if (mod.projectType === 'modpack') {
+      setSelectedModpack(mod)
+    } else {
+      setSelectedMod(mod)
     }
   }
 
@@ -41,7 +54,7 @@ export default function Marketplace() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">Marketplace</h1>
-          <p className="text-sm text-surface-400 mt-1">Browse and install mods from Modrinth and CurseForge</p>
+          <p className="text-sm text-surface-400 mt-1">Browse and install content from Modrinth</p>
         </div>
       </div>
 
@@ -55,42 +68,27 @@ export default function Marketplace() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search mods..."
+            placeholder={`Search ${PROJECT_TYPES.find(t => t.id === projectType)?.label || 'content'}...`}
             className="w-full h-11 pl-10 pr-4 rounded-xl bg-surface-800/50 border border-surface-700/50 text-white text-sm placeholder-surface-500 focus:outline-none focus:border-flexo-500/50 focus:ring-1 focus:ring-flexo-500/20 transition-all"
           />
         </div>
       </form>
 
-      <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
-        {[
-          { id: 'all', label: 'All Sources' },
-          { id: 'modrinth', label: 'Modrinth' },
-          { id: 'curseforge', label: 'CurseForge' },
-        ].map((source) => (
+      <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-1">
+        {PROJECT_TYPES.map((type) => (
           <button
-            key={source.id}
-            onClick={() => setSource(source.id as any)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-              selectedSource === source.id
-                ? 'bg-flexo-500/10 text-flexo-400 border border-flexo-500/20'
-                : 'bg-surface-800/50 text-surface-400 border border-surface-700/50 hover:text-surface-200'
+            key={type.id}
+            onClick={() => handleTypeChange(type.id)}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+              projectType === type.id
+                ? 'bg-flexo-500 text-white shadow-lg shadow-flexo-500/20'
+                : 'bg-surface-800/50 text-surface-400 border border-surface-700/50 hover:text-surface-200 hover:bg-surface-800/80'
             }`}
           >
-            {source.label}
-          </button>
-        ))}
-        <div className="w-px h-5 bg-surface-700 mx-1" />
-        {CATEGORIES.slice(0, 8).map((cat) => (
-          <button
-            key={cat.id}
-            onClick={() => setSelectedCategory(cat.id)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-              selectedCategory === cat.id
-                ? 'bg-flexo-500/10 text-flexo-400 border border-flexo-500/20'
-                : 'bg-surface-800/50 text-surface-400 border border-surface-700/50 hover:text-surface-200'
-            }`}
-          >
-            {cat.label}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d={type.icon} />
+            </svg>
+            {type.label}
           </button>
         ))}
       </div>
@@ -115,7 +113,7 @@ export default function Marketplace() {
           {mods.map((mod) => (
             <button
               key={mod.id}
-              onClick={() => setSelectedMod(mod)}
+              onClick={() => handleModClick(mod)}
               className="group text-left bg-surface-800/30 hover:bg-surface-800/60 border border-surface-700/30 hover:border-surface-700/60 rounded-xl p-4 transition-all duration-200"
             >
               <div className="flex gap-3 mb-3">
@@ -143,7 +141,10 @@ export default function Marketplace() {
               </p>
 
               <div className="flex items-center gap-2 flex-wrap">
-                {mod.categories.slice(0, 3).map((cat) => (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-flexo-500/10 text-flexo-400 capitalize">
+                  {mod.projectType || 'mod'}
+                </span>
+                {mod.categories.slice(0, 2).map((cat) => (
                   <span key={cat} className="text-[10px] px-1.5 py-0.5 rounded bg-surface-700/50 text-surface-400">
                     {cat}
                   </span>
@@ -159,12 +160,16 @@ export default function Marketplace() {
 
       {!isLoading && mods.length === 0 && (
         <div className="text-center py-16">
-          <p className="text-surface-500 text-sm">No mods found. Try a different search.</p>
+          <p className="text-surface-500 text-sm">No results found. Try a different search.</p>
         </div>
       )}
 
       {selectedMod && (
         <ModDetailModal mod={selectedMod} onClose={() => setSelectedMod(null)} />
+      )}
+
+      {selectedModpack && (
+        <ModpackInstallModal mod={selectedModpack} onClose={() => setSelectedModpack(null)} />
       )}
     </div>
   )
