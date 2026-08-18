@@ -38,20 +38,14 @@ jobs:
       - name: Build Electron main process
         run: npx vite build --config vite.config.ts
 
-      - name: Package Electron app (Windows)
-        run: npx electron-builder --win --publish=never
+      - name: Package & Publish Electron app (Windows)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npx electron-builder --win --publish=always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            release/*.exe
-            release/latest.yml
-          generate_release_notes: true
-          draft: false
-          prerelease: false
+      - name: Package Electron app (Windows)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: npx electron-builder --win --publish=never
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

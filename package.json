@@ -1,6 +1,6 @@
 {
   "name": "flexo-launcher",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Flexo Minecraft Launcher",
   "main": "dist-electron/main.js",
   "scripts": {
