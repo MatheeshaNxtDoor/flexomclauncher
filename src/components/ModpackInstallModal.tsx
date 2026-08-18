@@ -1,7 +1,9 @@
 import { Mod } from '../stores/marketplaceStore'
 import { useState, useEffect } from 'react'
+import { useDownloadStore } from '../stores/downloadStore'
 
 export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClose: () => void }) {
+  const { addDownload, updateDownload } = useDownloadStore()
   const [versions, setVersions] = useState<any[]>([])
   const [selectedVersionId, setSelectedVersionId] = useState('')
   const [loadingVersions, setLoadingVersions] = useState(true)
@@ -32,27 +34,59 @@ export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClos
     setIsInstalling(true)
     setInstallStatus('Creating instance...')
 
+    const version = versions.find(v => v.id === selectedVersionId)
+    if (!version) {
+      setInstallStatus('Version not found')
+      setIsInstalling(false)
+      return
+    }
+
+    const downloadId = `modpack-${mod.id}-${Date.now()}`
+
+    addDownload({
+      id: downloadId,
+      name: mod.title,
+      version: version.version_number || selectedVersionId,
+      source: 'modrinth',
+      status: 'downloading',
+      progress: 5,
+      speed: 0,
+      eta: 0,
+      instanceId: '',
+      startedAt: Date.now(),
+      type: 'modpack',
+    })
+
+    let progress = 5
+    const progressInterval = setInterval(() => {
+      if (progress < 85) {
+        progress += Math.random() * 8 + 2
+        if (progress > 85) progress = 85
+        updateDownload(downloadId, { progress, speed: (Math.random() * 3 + 1) * 1024 * 1024 })
+      }
+    }, 500)
+
     try {
-      const version = versions.find(v => v.id === selectedVersionId)
-      if (!version) throw new Error('Version not found')
-
-      const mcVersion = version.game_versions?.[0] || '1.21.11'
+      const mcVersion = version.game_versions?.[0] || '1.21.4'
       const loader = version.loaders?.[0] || 'fabric'
-      const loaderVersion = ''
 
+      updateDownload(downloadId, { progress: 10 })
+      setInstallStatus('Creating instance...')
       const instance = await window.electronAPI.instances.create({
         name: instanceName,
         version: mcVersion,
         modLoader: loader,
-        modLoaderVersion: loaderVersion,
+        modLoaderVersion: '',
       })
 
-      setInstallStatus('Setting up instance...')
+      updateDownload(downloadId, { instanceId: instance.id, progress: 15 })
+      setInstallStatus('Setting up Minecraft files...')
       await window.electronAPI.instance.setup(instance.id)
 
       const primaryFile = version.files?.find((f: any) => f.primary) || version.files?.[0]
       if (primaryFile) {
-        setInstallStatus('Downloading modpack...')
+        updateDownload(downloadId, { progress: 80 })
+        setInstallStatus('Installing modpack...')
         const instanceData = await window.electronAPI.instances.get(instance.id)
         await window.electronAPI.modpack.install(
           primaryFile.url,
@@ -60,9 +94,13 @@ export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClos
         )
       }
 
+      clearInterval(progressInterval)
+      updateDownload(downloadId, { progress: 100, speed: 0, status: 'completed', completedAt: Date.now() })
       setInstallStatus('Modpack installed successfully!')
       setTimeout(() => onClose(), 1000)
     } catch (err: any) {
+      clearInterval(progressInterval)
+      updateDownload(downloadId, { status: 'failed', error: err.message, progress: 0, completedAt: Date.now() })
       setInstallStatus(`Failed: ${err.message}`)
     } finally {
       setIsInstalling(false)

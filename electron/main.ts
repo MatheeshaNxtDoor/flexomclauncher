@@ -9,6 +9,7 @@ import { MinecraftService } from './services/minecraft'
 import { ModrinthService } from './services/modrinth'
 import { AuthlibService } from './services/authlib'
 import { DownloadManager } from './services/downloads'
+import { ModLoaderService } from './services/modloader'
 import { autoUpdater } from 'electron-updater'
 
 const logFile = path.join(app.getPath('userData'), 'launcher.log')
@@ -97,6 +98,7 @@ function initializeServices() {
   const modrinthSvc = new ModrinthService(userDataPath)
   const authlibSvc = new AuthlibService(userDataPath)
   const downloadMgr = new DownloadManager()
+  const modLoaderSvc = new ModLoaderService(userDataPath)
 
   log('Services created')
 
@@ -157,7 +159,9 @@ function initializeServices() {
     const gameDir = instance.gameDirectory
     if (!fs.existsSync(gameDir)) fs.mkdirSync(gameDir, { recursive: true })
 
-    sendToRenderer('instance:setup-progress', { instanceId, step: 'Fetching version info...' })
+    const loaderLabel = instance.modLoader === 'vanilla' ? 'Vanilla' : instance.modLoader.charAt(0).toUpperCase() + instance.modLoader.slice(1)
+
+    sendToRenderer('instance:setup-progress', { instanceId, step: `Downloading ${loaderLabel} ${instance.version}...` })
     const versionJson = await minecraftSvc.getVersionJson(instance.version)
 
     sendToRenderer('instance:setup-progress', { instanceId, step: 'Downloading client jar...' })
@@ -176,10 +180,24 @@ function initializeServices() {
       sendToRenderer('instance:setup-progress', { instanceId, step: `Libraries: ${progress.percent}%` })
     })
 
-    if (instanceStore.getInstance(instanceId)?.modLoader !== 'vanilla') {
-      sendToRenderer('instance:setup-progress', { instanceId, step: 'Downloading authlib-injector...' })
-      await authlibSvc.downloadAuthlibInjector()
+    if (instance.modLoader !== 'vanilla') {
+      sendToRenderer('instance:setup-progress', { instanceId, step: `Installing ${loaderLabel} mod loader...` })
+      await modLoaderSvc.installLoader(instance.modLoader, instance.version, gameDir, (msg) => {
+        sendToRenderer('instance:setup-progress', { instanceId, step: msg })
+      })
+
+      const installedVersionId = modLoaderSvc.getVersionId(instance.modLoader, instance.version)
+      const clientJar = path.join(gameDir, 'versions', installedVersionId, `${installedVersionId}.jar`)
+      if (!fs.existsSync(clientJar)) {
+        const vanillaJar = path.join(gameDir, 'versions', instance.version, `${instance.version}.jar`)
+        if (fs.existsSync(vanillaJar)) {
+          const versionDir = path.dirname(clientJar)
+          if (!fs.existsSync(versionDir)) fs.mkdirSync(versionDir, { recursive: true })
+          fs.copyFileSync(vanillaJar, clientJar)
+        }
+      }
     }
+
     if (accountStore.getCurrentAccount()?.type === 'discord') {
       sendToRenderer('instance:setup-progress', { instanceId, step: 'Downloading authlib-injector...' })
       await authlibSvc.downloadAuthlibInjector()

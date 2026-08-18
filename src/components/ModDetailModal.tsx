@@ -45,31 +45,43 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
       return
     }
 
+    const projectType = mod.projectType || 'mod'
+    const subDir = projectType === 'shader' ? 'shaderpacks'
+      : projectType === 'resourcepack' ? 'resourcepacks'
+      : 'mods'
+    const targetDir = `${instance.gameDirectory}/${subDir}`
+    const version = versions.find(v => v.id === selectedVersionId)
+    const downloadId = `mod-${mod.id}-${Date.now()}`
+
+    addDownload({
+      id: downloadId,
+      name: mod.title,
+      version: version?.version_number || selectedVersionId,
+      source: 'modrinth',
+      status: 'downloading',
+      progress: 0,
+      speed: 0,
+      eta: 0,
+      instanceId: selectedInstanceId,
+      startedAt: Date.now(),
+      type: projectType as any,
+    })
+
+    let progress = 0
+    const progressInterval = setInterval(() => {
+      if (progress < 90) {
+        progress += Math.random() * 15 + 5
+        if (progress > 90) progress = 90
+        updateDownload(downloadId, { progress, speed: (Math.random() * 5 + 2) * 1024 * 1024 })
+      }
+    }, 300)
+
     try {
-      const projectType = mod.projectType || 'mod'
-      const subDir = projectType === 'shader' ? 'shaderpacks'
-        : projectType === 'resourcepack' ? 'resourcepacks'
-        : 'mods'
-      const modsDir = `${instance.gameDirectory}/${subDir}`
-      const version = versions.find(v => v.id === selectedVersionId)
-
-      const downloadId = `mod-${mod.id}-${Date.now()}`
-      addDownload({
-        id: downloadId,
-        name: mod.title,
-        version: version?.version_number || selectedVersionId,
-        source: 'modrinth',
-        status: 'downloading',
-        progress: 0,
-        speed: 0,
-        eta: 0,
-        instanceId: selectedInstanceId,
-        startedAt: Date.now(),
-        type: projectType as any,
-      })
-
       setInstallStatus('Downloading...')
-      await window.electronAPI.marketplace.installMod(mod.id, selectedVersionId, modsDir)
+      await window.electronAPI.marketplace.installMod(mod.id, selectedVersionId, targetDir)
+
+      clearInterval(progressInterval)
+      updateDownload(downloadId, { progress: 100, speed: 0 })
 
       await window.electronAPI.instances.addMod(selectedInstanceId, {
         id: mod.id,
@@ -85,9 +97,15 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
         completedAt: Date.now(),
       })
 
-      setInstallStatus('Mod installed successfully!')
+      setInstallStatus('Installed successfully!')
       setTimeout(() => onClose(), 1000)
     } catch (err: any) {
+      clearInterval(progressInterval)
+      updateDownload(downloadId, {
+        status: 'failed',
+        error: err.message,
+        completedAt: Date.now(),
+      })
       setInstallStatus(`Failed: ${err.message}`)
     } finally {
       setIsInstalling(false)
@@ -216,7 +234,7 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
               <div className={`mb-3 p-2 rounded-lg text-xs ${
                 installStatus.includes('Failed')
                   ? 'bg-red-500/10 text-red-400'
-                  : installStatus.includes('success')
+                  : installStatus.includes('success') || installStatus.includes('Installed')
                   ? 'bg-green-500/10 text-green-400'
                   : 'bg-surface-800 text-surface-300'
               }`}>
