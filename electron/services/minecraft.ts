@@ -372,18 +372,29 @@ export class MinecraftService {
       '${auth_player_name}': opts.username,
       '${auth_session}': opts.accessToken,
       '${auth_player_uuid}': opts.uuid,
+      '${auth_uuid}': opts.uuid,
       '${auth_access_token}': opts.accessToken,
       '${user_properties}': JSON.stringify(opts.properties || []),
       '${user_type}': opts.userType,
       '${version_name}': versionJson.id,
       '${game_directory}': opts.gameDir,
       '${assets_root}': opts.assetsDir,
-      '${assets_index_name}': versionJson.assets,
+      '${assets_index_name}': versionJson.assets || '',
+      '${assets_index_num}': versionJson.assets || '',
       '${version_type}': 'Flexo',
       '${natives_directory}': path.join(opts.gameDir, 'versions', versionJson.id, 'natives'),
       '${launcher_name}': 'Flexo',
       '${launcher_version}': '1.0.0',
       '${class_path}': '',
+      '${classpath}': '',
+      '${clientid}': '',
+      '${auth_xuid}': '',
+      '${resolution_width}': '854',
+      '${resolution_height}': '480',
+      '${quickPlayPath}': '',
+      '${quickPlaySingleplayer}': '',
+      '${quickPlayMultiplayer}': '',
+      '${quickPlayRealms}': '',
     }
 
     const gameArgs = versionJson.arguments?.game || []
@@ -445,6 +456,8 @@ export class MinecraftService {
           .replaceAll('${launcher_name}', 'Flexo')
           .replaceAll('${launcher_version}', '1.0.0')
           .replaceAll('${class_path}', opts.classpath)
+          .replaceAll('${classpath}', opts.classpath)
+          .replaceAll('${library_directory}', path.dirname(opts.classpath.split(process.platform === 'win32' ? ';' : ':')[0] || ''))
         args.push(resolved)
       } else if (arg.rules && this.evaluateRules(arg.rules)) {
         if (typeof arg.value === 'string') args.push(arg.value)
