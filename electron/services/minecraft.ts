@@ -304,13 +304,13 @@ export class MinecraftService {
     for (const rule of rules) {
       if (rule.action === 'allow') {
         let matches = true
-        if (rule.os) matches = this.matchesOS(rule.os)
-        if (rule.features) matches = this.matchesFeatures(rule.features)
+        if (rule.os && !this.matchesOS(rule.os)) matches = false
+        if (rule.features && !this.matchesFeatures(rule.features)) matches = false
         if (matches) allowed = true
       } else if (rule.action === 'deny') {
         let matches = true
-        if (rule.os) matches = this.matchesOS(rule.os)
-        if (rule.features) matches = this.matchesFeatures(rule.features)
+        if (rule.os && !this.matchesOS(rule.os)) matches = false
+        if (rule.features && !this.matchesFeatures(rule.features)) matches = false
         if (matches) return false
       }
     }
@@ -418,31 +418,38 @@ export class MinecraftService {
         }
       } else if (arg.rules && this.evaluateRules(arg.rules)) {
         if (typeof arg.value === 'string') {
-          if (arg.value) args.push(arg.value)
+          let resolved = arg.value
+          for (const [key, value] of Object.entries(placeholders)) {
+            resolved = resolved.replaceAll(key, value)
+          }
+          if (resolved && !resolved.includes('${')) args.push(resolved)
         } else if (Array.isArray(arg.value)) {
-          const resolved = arg.value.map((v: string) => {
-            let r = v
+          for (const v of arg.value) {
+            let resolved = v
             for (const [key, value] of Object.entries(placeholders)) {
-              r = r.replaceAll(key, value)
+              resolved = resolved.replaceAll(key, value)
             }
-            return r
-          }).filter((v: string) => v && !v.includes('${'))
-          args.push(...resolved)
+            if (resolved && !resolved.includes('${')) args.push(resolved)
+          }
         }
       }
     }
 
-    const filtered: string[] = []
-    for (let i = 0; i < args.length; i++) {
-      if (args[i] === '' || args[i] === '""') continue
-      if (args[i].startsWith('--quickPlay') && (i + 1 < args.length) && (args[i + 1] === '' || args[i + 1] === '""' || args[i + 1].includes('${'))) {
-        i++
-        continue
-      }
-      filtered.push(args[i])
+    return this.filterGameArgs(args)
+  }
+
+  private filterGameArgs(args: string[]): string[] {
+    const skipFlags = new Set(['--demo', '--clientId', '--xuid'])
+    const result: string[] = []
+
+    for (const arg of args) {
+      if (!arg || arg === '""') continue
+      if (skipFlags.has(arg)) continue
+      if (arg.startsWith('--quickPlay')) continue
+      result.push(arg)
     }
 
-    return filtered
+    return result
   }
 
   buildJvmArgs(
