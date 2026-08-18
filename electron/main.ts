@@ -319,9 +319,14 @@ function initializeServices() {
   ipcMain.handle('updater:check-for-updates', async () => {
     try {
       const { autoUpdater } = await import('electron-updater')
-      autoUpdater.autoDownload = false
-      return await autoUpdater.checkForUpdates()
-    } catch (e) { log(`Updater check failed: ${e}`); return null }
+      autoUpdater.autoDownload = true
+      autoUpdater.autoInstallOnAppQuit = true
+      const result = await autoUpdater.checkForUpdates()
+      return result
+    } catch (e: any) {
+      log(`UPDATE CHECK FAILED: ${e.message}`)
+      return null
+    }
   })
   ipcMain.handle('updater:download-update', async () => {
     const { autoUpdater } = await import('electron-updater')
@@ -337,11 +342,49 @@ function initializeServices() {
   log('All IPC handlers registered')
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   log('app.whenReady fired')
   createWindow()
   initializeServices()
   log('Initialization complete')
+
+  // Auto-update: check on startup (non-blocking)
+  setTimeout(async () => {
+    try {
+      const { autoUpdater } = await import('electron-updater')
+      autoUpdater.autoDownload = true
+      autoUpdater.autoInstallOnAppQuit = true
+      autoUpdater.logger = {
+        info: (msg: string) => log(`[updater] ${msg}`),
+        warn: (msg: string) => log(`[updater] ${msg}`),
+        error: (msg: string) => log(`[updater] ${msg}`),
+        debug: () => {},
+      } as any
+      autoUpdater.on('update-available', (info) => {
+        log(`UPDATE AVAILABLE: ${info.version}`)
+        sendToRenderer('updater:update-available', info)
+      })
+      autoUpdater.on('update-not-available', () => {
+        log('UPDATE: already up to date')
+        sendToRenderer('updater:update-not-available')
+      })
+      autoUpdater.on('download-progress', (progress) => {
+        sendToRenderer('updater:download-progress', progress)
+      })
+      autoUpdater.on('update-downloaded', () => {
+        log('UPDATE: downloaded, will install on quit')
+        sendToRenderer('updater:update-downloaded')
+      })
+      autoUpdater.on('error', (err) => {
+        log(`UPDATE ERROR: ${err.message}`)
+      })
+      const result = await autoUpdater.checkForUpdates()
+      log(`UPDATE CHECK: ${result?.updateInfo?.version || 'no update found'}`)
+    } catch (e: any) {
+      log(`UPDATE CHECK FAILED: ${e.message}`)
+    }
+  }, 3000)
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

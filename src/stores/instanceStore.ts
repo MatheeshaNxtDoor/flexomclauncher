@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useDownloadStore } from './downloadStore'
 
 export interface GameInstance {
   id: string
@@ -34,6 +35,8 @@ interface InstanceState {
   recentlyPlayed: GameInstance | null
 }
 
+let downloadIdCounter = 0
+
 export const useInstanceStore = create<InstanceState>((set, get) => ({
   instances: [],
   isLoading: false,
@@ -61,6 +64,26 @@ export const useInstanceStore = create<InstanceState>((set, get) => ({
   },
 
   setupInstance: async (id: string) => {
+    const instance = get().instances.find(i => i.id === id)
+    if (!instance) return
+
+    const downloadId = `setup-${id}-${++downloadIdCounter}`
+
+    const addDownload = useDownloadStore.getState().addDownload
+    addDownload({
+        id: downloadId,
+        name: instance.name,
+        version: instance.version,
+        source: 'minecraft' as const,
+        status: 'downloading' as const,
+        progress: 0,
+        speed: 0,
+        eta: 0,
+        instanceId: id,
+        startedAt: Date.now(),
+        type: 'instance-setup' as const,
+      })
+
     set((state) => ({
       setupProgress: { ...state.setupProgress, [id]: 'Starting setup...' },
     }))
@@ -73,6 +96,17 @@ export const useInstanceStore = create<InstanceState>((set, get) => ({
             [id]: data.step || 'Working...',
           },
         }))
+
+        const updateDownload = useDownloadStore.getState().updateDownload
+        if (updateDownload) {
+          const progress = data.done ? 100 :
+            data.step.includes('%') ? parseInt(data.step.match(/(\d+)%/)?.[1] || '50') :
+            data.step.includes('complete') ? 100 : 30
+          updateDownload(downloadId, {
+            progress,
+            status: data.done ? 'completed' : 'downloading',
+          })
+        }
       }
     })
 
@@ -81,10 +115,29 @@ export const useInstanceStore = create<InstanceState>((set, get) => ({
       set((state) => ({
         setupProgress: { ...state.setupProgress, [id]: 'Complete!' },
       }))
+
+      const updateDownload = useDownloadStore.getState().updateDownload
+      if (updateDownload) {
+        updateDownload(downloadId, {
+          status: 'completed',
+          progress: 100,
+          completedAt: Date.now(),
+        })
+      }
     } catch (err: any) {
       set((state) => ({
         setupProgress: { ...state.setupProgress, [id]: `Error: ${err.message}` },
       }))
+
+      const updateDownload = useDownloadStore.getState().updateDownload
+      if (updateDownload) {
+        updateDownload(downloadId, {
+          status: 'failed',
+          error: err.message,
+          completedAt: Date.now(),
+        })
+      }
+
       throw err
     } finally {
       unsub()
