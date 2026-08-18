@@ -1,39 +1,69 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useInstanceStore, GameInstance } from '../stores/instanceStore'
-import { useDownloadStore } from '../stores/downloadStore'
 import CreateInstanceModal from '../components/CreateInstanceModal'
 
 export default function Library() {
   const { instances, isLoading, loadInstances, recentlyPlayed, launchInstance, setupInstance, setupProgress } = useInstanceStore()
-  const { setupListeners } = useDownloadStore()
   const [showCreate, setShowCreate] = useState(false)
   const [launching, setLaunching] = useState<string | null>(null)
   const [settingUp, setSettingUp] = useState<string | null>(null)
+  const [installedMap, setInstalledMap] = useState<Record<string, boolean>>({})
+  const [runningMap, setRunningMap] = useState<Record<string, boolean>>({})
+
+  const refreshStates = useCallback(async () => {
+    const newInstalled: Record<string, boolean> = {}
+    for (const inst of instances) {
+      newInstalled[inst.id] = await window.electronAPI.instances.isInstalled(inst.id)
+    }
+    setInstalledMap(newInstalled)
+  }, [instances])
 
   useEffect(() => {
     loadInstances()
-    setupListeners()
   }, [])
 
-  const handleLaunch = async (id: string) => {
+  useEffect(() => {
+    if (instances.length > 0) refreshStates()
+  }, [instances, refreshStates])
+
+  useEffect(() => {
+    const unsubExited = window.electronAPI.launcher.onGameExited((data: any) => {
+      setRunningMap((prev) => ({ ...prev, [data.instanceId]: false }))
+      refreshStates()
+    })
+    const unsubError = window.electronAPI.launcher.onGameError?.((data: any) => {
+      setRunningMap((prev) => ({ ...prev, [data.instanceId]: false }))
+    })
+    return () => { unsubExited(); unsubError?.() }
+  }, [refreshStates])
+
+  const handleAction = async (id: string) => {
+    if (runningMap[id]) {
+      await window.electronAPI.launcher.kill(id)
+      setRunningMap((prev) => ({ ...prev, [id]: false }))
+      return
+    }
+    if (!installedMap[id]) {
+      setSettingUp(id)
+      try {
+        await setupInstance(id)
+        setInstalledMap((prev) => ({ ...prev, [id]: true }))
+      } catch (e: any) {
+        alert(`Setup failed: ${e.message}`)
+      } finally {
+        setSettingUp(null)
+      }
+      return
+    }
     setLaunching(id)
     try {
+      setRunningMap((prev) => ({ ...prev, [id]: true }))
       await launchInstance(id)
     } catch (e: any) {
       alert(`Launch failed: ${e.message}`)
+      setRunningMap((prev) => ({ ...prev, [id]: false }))
     } finally {
       setLaunching(null)
-    }
-  }
-
-  const handleSetup = async (id: string) => {
-    setSettingUp(id)
-    try {
-      await setupInstance(id)
-    } catch (e: any) {
-      alert(`Setup failed: ${e.message}`)
-    } finally {
-      setSettingUp(null)
     }
   }
 
@@ -89,18 +119,36 @@ export default function Library() {
                 </p>
               </div>
               <button
-                onClick={() => handleLaunch(recentlyPlayed.id)}
+                onClick={() => handleAction(recentlyPlayed.id)}
                 disabled={launching === recentlyPlayed.id || settingUp === recentlyPlayed.id}
-                className="flex items-center gap-2 px-6 py-3 rounded-lg bg-flexo-500 hover:bg-flexo-600 text-white font-semibold transition-all disabled:opacity-50 shadow-lg shadow-flexo-500/25"
+                className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all disabled:opacity-50 shadow-lg ${
+                  runningMap[recentlyPlayed.id]
+                    ? 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 shadow-red-500/10'
+                    : 'bg-flexo-500 hover:bg-flexo-600 text-white shadow-flexo-500/25'
+                }`}
               >
-                {launching === recentlyPlayed.id ? (
+                {launching === recentlyPlayed.id || settingUp === recentlyPlayed.id ? (
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : runningMap[recentlyPlayed.id] ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="4" width="4" height="16"/>
+                    <rect x="14" y="4" width="4" height="16"/>
+                  </svg>
+                ) : !installedMap[recentlyPlayed.id] ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
                 ) : (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
                     <polygon points="5 3 19 12 5 21 5 3"/>
                   </svg>
                 )}
-                {launching === recentlyPlayed.id ? 'Launching...' : 'Play'}
+                {launching === recentlyPlayed.id ? 'Launching...' :
+                 settingUp === recentlyPlayed.id ? 'Installing...' :
+                 runningMap[recentlyPlayed.id] ? 'Stop' :
+                 !installedMap[recentlyPlayed.id] ? 'Install' : 'Play'}
               </button>
             </div>
           </div>
@@ -119,9 +167,10 @@ export default function Library() {
               instance={instance}
               isLaunching={launching === instance.id}
               isSettingUp={settingUp === instance.id}
+              isInstalled={installedMap[instance.id] ?? false}
+              isRunning={runningMap[instance.id] ?? false}
               setupStatus={setupProgress[instance.id]}
-              onLaunch={() => handleLaunch(instance.id)}
-              onSetup={() => handleSetup(instance.id)}
+              onAction={() => handleAction(instance.id)}
             />
           ))}
         </div>
@@ -136,19 +185,28 @@ function InstanceCard({
   instance,
   isLaunching,
   isSettingUp,
+  isInstalled,
+  isRunning,
   setupStatus,
-  onLaunch,
-  onSetup,
+  onAction,
 }: {
   instance: GameInstance
   isLaunching: boolean
   isSettingUp: boolean
+  isInstalled: boolean
+  isRunning: boolean
   setupStatus?: string
-  onLaunch: () => void
-  onSetup: () => void
+  onAction: () => void
 }) {
   const { deleteInstance } = useInstanceStore()
   const [showMenu, setShowMenu] = useState(false)
+
+  const isLoadingState = isLaunching || isSettingUp
+
+  const buttonLabel = isSettingUp ? 'Installing...' :
+    isLaunching ? 'Launching...' :
+    isRunning ? 'Stop' :
+    !isInstalled ? 'Install' : 'Play'
 
   return (
     <div className="group relative bg-surface-800/50 border border-surface-700/50 rounded-xl overflow-hidden hover:border-surface-600/50 transition-all duration-200">
@@ -225,34 +283,37 @@ function InstanceCard({
             <span className="truncate text-xs">{setupStatus || 'Setting up...'}</span>
           </div>
         ) : (
-          <div className="flex gap-2">
-            <button
-              onClick={onLaunch}
-              disabled={isLaunching}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-flexo-500/10 hover:bg-flexo-500/20 text-flexo-400 text-sm font-medium transition-colors disabled:opacity-50"
-            >
-              {isLaunching ? (
-                <div className="w-4 h-4 border-2 border-flexo-400/30 border-t-flexo-400 rounded-full animate-spin" />
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="5 3 19 12 5 21 5 3"/>
-                </svg>
-              )}
-              {isLaunching ? 'Launching...' : 'Play'}
-            </button>
-            <button
-              onClick={onSetup}
-              disabled={isSettingUp}
-              className="px-3 py-2 rounded-lg bg-surface-700/50 hover:bg-surface-700 text-surface-400 text-sm transition-colors disabled:opacity-50"
-              title="Re-download game files"
-            >
+          <button
+            onClick={onAction}
+            disabled={isLoadingState}
+            className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
+              isRunning
+                ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20'
+                : !isInstalled
+                  ? 'bg-flexo-500/10 hover:bg-flexo-500/20 text-flexo-400 border border-flexo-500/20'
+                  : 'bg-flexo-500/10 hover:bg-flexo-500/20 text-flexo-400'
+            }`}
+          >
+            {isLoadingState ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : isRunning ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16"/>
+                <rect x="14" y="4" width="4" height="16"/>
+              </svg>
+            ) : !isInstalled ? (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-            </button>
-          </div>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+            )}
+            {buttonLabel}
+          </button>
         )}
       </div>
     </div>

@@ -24,6 +24,7 @@ export interface ElectronAPI {
     setLastPlayed: (instanceId: string) => Promise<boolean>
     addMod: (instanceId: string, mod: any) => Promise<boolean>
     removeMod: (instanceId: string, modId: string) => Promise<boolean>
+    isInstalled: (instanceId: string) => Promise<boolean>
   }
   instance: {
     setup: (instanceId: string) => Promise<any>
@@ -33,8 +34,10 @@ export interface ElectronAPI {
     launch: (instanceId: string) => Promise<any>
     getJavaPath: () => Promise<string | null>
     kill: (instanceId: string) => Promise<boolean>
+    isRunning: (instanceId: string) => Promise<boolean>
     onGameLog: (callback: (data: any) => void) => () => void
     onGameExited: (callback: (data: any) => void) => () => void
+    onGameError: (callback: (data: any) => void) => () => void
   }
   minecraft: {
     getVersionManifest: () => Promise<any>
@@ -105,6 +108,7 @@ const electronAPI: ElectronAPI = {
     setLastPlayed: (instanceId: string) => ipcRenderer.invoke('instances:set-last-played', instanceId),
     addMod: (instanceId: string, mod: any) => ipcRenderer.invoke('instances:add-mod', instanceId, mod),
     removeMod: (instanceId: string, modId: string) => ipcRenderer.invoke('instances:remove-mod', instanceId, modId),
+    isInstalled: (instanceId: string) => ipcRenderer.invoke('instances:is-installed', instanceId),
   },
   instance: {
     setup: (instanceId: string) => ipcRenderer.invoke('instance:setup', instanceId),
@@ -114,8 +118,10 @@ const electronAPI: ElectronAPI = {
     launch: (instanceId: string) => ipcRenderer.invoke('launcher:launch', instanceId),
     getJavaPath: () => ipcRenderer.invoke('launcher:get-java-path'),
     kill: (instanceId: string) => ipcRenderer.invoke('launcher:kill', instanceId),
+    isRunning: (instanceId: string) => ipcRenderer.invoke('launcher:is-running', instanceId),
     onGameLog: (callback) => onEvent('launcher:game-log', callback),
     onGameExited: (callback) => onEvent('launcher:game-exited', callback),
+    onGameError: (callback) => onEvent('launcher:game-error', callback),
   },
   minecraft: {
     getVersionManifest: () => ipcRenderer.invoke('minecraft:get-version-manifest'),

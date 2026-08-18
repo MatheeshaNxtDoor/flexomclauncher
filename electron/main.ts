@@ -189,56 +189,99 @@ function initializeServices() {
   })
 
   ipcMain.handle('launcher:launch', async (_e: any, instanceId: string) => {
-    const account = accountStore.getCurrentAccount()
-    if (!account) throw new Error('No account selected')
-    const instance = instanceStore.getInstance(instanceId)
-    if (!instance) throw new Error('Instance not found')
+    log(`LAUNCH START: instanceId=${instanceId}`)
+    try {
+      const account = accountStore.getCurrentAccount()
+      if (!account) { log('LAUNCH FAIL: No account selected'); throw new Error('No account selected') }
+      const instance = instanceStore.getInstance(instanceId)
+      if (!instance) { log('LAUNCH FAIL: Instance not found'); throw new Error('Instance not found') }
+      log(`LAUNCH: account=${account.playerName} type=${account.type} version=${instance.version}`)
 
-    const gameDir = instance.gameDirectory
-    if (!fs.existsSync(gameDir)) throw new Error('Instance not set up. Run setup first.')
+      const gameDir = instance.gameDirectory
+      log(`LAUNCH: gameDir=${gameDir} exists=${fs.existsSync(gameDir)}`)
+      if (!fs.existsSync(gameDir)) throw new Error('Instance not set up. Run setup first.')
 
-    const versionJson = await minecraftSvc.getVersionJson(instance.version)
-    const librariesDir = path.join(gameDir, 'libraries')
-    const classpath = minecraftSvc.buildClasspath(versionJson, librariesDir)
-    const clientJar = path.join(gameDir, 'versions', instance.version, `${instance.version}.jar`)
-    if (!fs.existsSync(clientJar)) throw new Error('Client jar not found. Run instance setup first.')
+      const versionJson = await minecraftSvc.getVersionJson(instance.version)
+      const librariesDir = path.join(gameDir, 'libraries')
+      const classpath = minecraftSvc.buildClasspath(versionJson, librariesDir)
+      const clientJar = path.join(gameDir, 'versions', instance.version, `${instance.version}.jar`)
+      log(`LAUNCH: clientJar=${clientJar} exists=${fs.existsSync(clientJar)}`)
+      if (!fs.existsSync(clientJar)) throw new Error('Client jar not found. Run instance setup first.')
 
-    const separator = process.platform === 'win32' ? ';' : ':'
-    const fullClasspath = `${clientJar}${separator}${classpath}`
-    const assetsDir = path.join(gameDir, 'assets')
-    const nativesDir = path.join(gameDir, 'versions', instance.version, 'natives')
+      const separator = process.platform === 'win32' ? ';' : ':'
+      const fullClasspath = `${clientJar}${separator}${classpath}`
+      const assetsDir = path.join(gameDir, 'assets')
+      const nativesDir = path.join(gameDir, 'versions', instance.version, 'natives')
 
-    let authlibInjectorPath: string | undefined
-    let authlibInjectorUrl: string | undefined
-    if (account.type === 'discord') {
-      authlibInjectorPath = await authlibSvc.downloadAuthlibInjector()
-      authlibInjectorUrl = account.authServer || 'https://auth.flexo.lol/authlib-injector'
+      let authlibInjectorPath: string | undefined
+      let authlibInjectorUrl: string | undefined
+      if (account.type === 'discord') {
+        authlibInjectorPath = await authlibSvc.downloadAuthlibInjector()
+        authlibInjectorUrl = account.authServer || 'https://auth.flexo.lol/authlib-injector'
+        log(`LAUNCH: authlibInjector=${authlibInjectorPath} url=${authlibInjectorUrl}`)
+      }
+
+      const javaArgs = minecraftSvc.buildJvmArgs(versionJson, {
+        classpath: fullClasspath, gameDir, nativesDir,
+        maxMemory: instance.maxMemory || 4096, minMemory: instance.minMemory || 1024,
+        javaPath: 'java', authlibInjectorPath, authlibInjectorUrl, jvmArgs: instance.jvmArgs,
+      })
+
+      const gameArgs = minecraftSvc.buildGameArgs(versionJson, {
+        username: account.playerName, uuid: account.playerUuid, accessToken: account.accessToken,
+        userType: account.userType || 'mojang', gameDir, assetsDir, properties: account.properties,
+      })
+
+      const javaPath = await launcherSvc.findJava()
+      log(`LAUNCH: javaPath=${javaPath}`)
+      if (!javaPath) throw new Error('Java not found.')
+
+      const mainClass = versionJson.mainClassClient || versionJson.mainClass
+      log(`LAUNCH: mainClass=${mainClass}`)
+      log(`LAUNCH: javaArgs=${JSON.stringify(javaArgs)}`)
+      log(`LAUNCH: gameArgs=${JSON.stringify(gameArgs)}`)
+
+      const { spawn } = await import('child_process')
+      const proc = spawn(javaPath, [...javaArgs, mainClass, ...gameArgs], {
+        cwd: gameDir, stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      log(`LAUNCH: process spawned pid=${proc.pid}`)
+
+      proc.stdout?.on('data', (data: Buffer) => {
+        const msg = data.toString()
+        log(`GAME STDOUT: ${msg.trim()}`)
+        sendToRenderer('launcher:game-log', { instanceId, stream: 'stdout', data: msg })
+      })
+      proc.stderr?.on('data', (data: Buffer) => {
+        const msg = data.toString()
+        log(`GAME STDERR: ${msg.trim()}`)
+        sendToRenderer('launcher:game-log', { instanceId, stream: 'stderr', data: msg })
+      })
+      proc.on('error', (err) => {
+        log(`LAUNCH ERROR: ${err.message}`)
+        sendToRenderer('launcher:game-error', { instanceId, error: err.message })
+      })
+      proc.on('exit', (code) => {
+        log(`LAUNCH EXIT: instanceId=${instanceId} code=${code}`)
+        sendToRenderer('launcher:game-exited', { instanceId, code })
+      })
+      launcherSvc.setRunning(instanceId, proc)
+      instanceStore.setLastPlayed(instanceId)
+      return { pid: proc.pid }
+    } catch (err: any) {
+      log(`LAUNCH FAIL: ${err.stack || err.message}`)
+      throw err
     }
-
-    const javaArgs = minecraftSvc.buildJvmArgs(versionJson, {
-      classpath: fullClasspath, gameDir, nativesDir,
-      maxMemory: instance.maxMemory || 4096, minMemory: instance.minMemory || 1024,
-      javaPath: 'java', authlibInjectorPath, authlibInjectorUrl, jvmArgs: instance.jvmArgs,
-    })
-
-    const gameArgs = minecraftSvc.buildGameArgs(versionJson, {
-      username: account.playerName, uuid: account.playerUuid, accessToken: account.accessToken,
-      userType: account.userType || 'mojang', gameDir, assetsDir, properties: account.properties,
-    })
-
-    const javaPath = await launcherSvc.findJava()
-    if (!javaPath) throw new Error('Java not found.')
-
-    const { spawn } = await import('child_process')
-    const proc = spawn(javaPath, [...javaArgs, versionJson.mainClassClient || versionJson.mainClass, ...gameArgs], {
-      cwd: gameDir, stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    proc.stdout?.on('data', (data: Buffer) => sendToRenderer('launcher:game-log', { instanceId, stream: 'stdout', data: data.toString() }))
-    proc.stderr?.on('data', (data: Buffer) => sendToRenderer('launcher:game-log', { instanceId, stream: 'stderr', data: data.toString() }))
-    proc.on('exit', (code) => sendToRenderer('launcher:game-exited', { instanceId, code }))
-    instanceStore.setLastPlayed(instanceId)
-    return { pid: proc.pid }
   })
+
+  ipcMain.handle('instances:is-installed', (_e: any, instanceId: string) => {
+    const instance = instanceStore.getInstance(instanceId)
+    if (!instance) return false
+    const clientJar = path.join(instance.gameDirectory, 'versions', instance.version, `${instance.version}.jar`)
+    return fs.existsSync(clientJar)
+  })
+
+  ipcMain.handle('launcher:is-running', (_e: any, instanceId: string) => launcherSvc.isRunning(instanceId))
 
   ipcMain.handle('launcher:get-java-path', () => launcherSvc.findJava())
   ipcMain.handle('launcher:kill', (_e: any, instanceId: string) => { launcherSvc.kill(instanceId); return true })

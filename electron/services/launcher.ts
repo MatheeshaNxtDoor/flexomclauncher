@@ -11,6 +11,12 @@ export class LauncherService {
   private javaPath: string | null = null
   private runningProcesses: Map<string, ChildProcess> = new Map()
 
+  setRunning(instanceId: string, proc: ChildProcess) {
+    this.runningProcesses.set(instanceId, proc)
+    proc.on('exit', () => this.runningProcesses.delete(instanceId))
+    proc.on('error', () => this.runningProcesses.delete(instanceId))
+  }
+
   kill(instanceId: string) {
     const proc = this.runningProcesses.get(instanceId)
     if (proc) {

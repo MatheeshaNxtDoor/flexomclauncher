@@ -26,6 +26,7 @@ declare global {
         setLastPlayed: (instanceId: string) => Promise<boolean>
         addMod: (instanceId: string, mod: any) => Promise<boolean>
         removeMod: (instanceId: string, modId: string) => Promise<boolean>
+        isInstalled: (instanceId: string) => Promise<boolean>
       }
       instance: {
         setup: (instanceId: string) => Promise<any>
@@ -35,8 +36,10 @@ declare global {
         launch: (instanceId: string) => Promise<any>
         getJavaPath: () => Promise<string | null>
         kill: (instanceId: string) => Promise<boolean>
+        isRunning: (instanceId: string) => Promise<boolean>
         onGameLog: (callback: (data: any) => void) => () => void
         onGameExited: (callback: (data: any) => void) => () => void
+        onGameError: (callback: (data: any) => void) => () => void
       }
       minecraft: {
         getVersionManifest: () => Promise<any>
