@@ -39,7 +39,6 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
     },
-    icon: path.join(__dirname, '../public/icon.png'),
   })
 
   if (isDev) {
@@ -341,27 +340,11 @@ function initializeServices() {
   }))
 }
 
-protocol.registerSchemesAsPrivileged([
-  { scheme: 'xmcl', privileges: { secure: true, supportFetchAPI: true, stream: true } },
-])
+protocol.registerSchemesAsPrivileged([])
 
 app.whenReady().then(() => {
   createWindow()
   initializeServices()
-
-  protocol.handle('xmcl', (request) => {
-    const url = new URL(request.url)
-    if (url.pathname === '/auth') {
-      const ticket = url.searchParams.get('ticket')
-      if (ticket && discordAuth) {
-        discordAuth.resolveTicket(ticket)
-      }
-      return new Response('<html><body><script>window.close()</script></body></html>', {
-        headers: { 'Content-Type': 'text/html' },
-      })
-    }
-    return new Response('Not found', { status: 404 })
-  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

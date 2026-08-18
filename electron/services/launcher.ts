@@ -1,4 +1,4 @@
-import { ChildProcess, spawn } from 'child_process'
+import { ChildProcess, spawn, execSync } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
@@ -139,7 +139,6 @@ export class LauncherService {
     }
 
     try {
-      const { execSync } = require('child_process')
       const result = execSync(`which ${javaName}`, { encoding: 'utf-8' }).trim()
       if (result && fs.existsSync(result)) {
         this.javaPath = result
