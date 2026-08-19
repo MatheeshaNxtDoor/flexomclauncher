@@ -2,10 +2,12 @@ import { useEffect, useState, useCallback } from 'react'
 import { useInstanceStore, GameInstance } from '../stores/instanceStore'
 import CreateInstanceModal from '../components/CreateInstanceModal'
 import InstanceManagerModal from '../components/InstanceManagerModal'
+import ImportExistingModal from '../components/ImportExistingModal'
 
 export default function Library() {
   const { instances, isLoading, loadInstances, recentlyPlayed, launchInstance, setupInstance, setupProgress } = useInstanceStore()
   const [showCreate, setShowCreate] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [managingInstance, setManagingInstance] = useState<GameInstance | null>(null)
   const [launching, setLaunching] = useState<string | null>(null)
   const [settingUp, setSettingUp] = useState<string | null>(null)
@@ -72,7 +74,7 @@ export default function Library() {
   if (instances.length === 0 && !isLoading) {
     return (
       <>
-        <EmptyState onOpenCreate={() => setShowCreate(true)} />
+        <EmptyState onOpenCreate={() => setShowCreate(true)} onOpenImport={() => setShowImport(true)} />
         {showCreate && <CreateInstanceModal onClose={() => setShowCreate(false)} />}
       </>
     )
@@ -85,16 +87,29 @@ export default function Library() {
           <h1 className="text-2xl font-bold text-white">Library</h1>
           <p className="text-sm text-surface-400 mt-1">{instances.length} instance{instances.length !== 1 ? 's' : ''}</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-flexo-500 hover:bg-flexo-600 text-white text-sm font-medium transition-colors shadow-lg shadow-flexo-500/20"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          New Instance
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-surface-800 hover:bg-surface-700 border border-surface-700/50 text-surface-300 hover:text-white text-sm font-medium transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            Import
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-flexo-500 hover:bg-flexo-600 text-white text-sm font-medium transition-colors shadow-lg shadow-flexo-500/20"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            New Instance
+          </button>
+        </div>
       </div>
 
       {recentlyPlayed && (
@@ -181,6 +196,7 @@ export default function Library() {
 
       {showCreate && <CreateInstanceModal onClose={() => setShowCreate(false)} />}
       {managingInstance && <InstanceManagerModal instance={managingInstance} onClose={() => setManagingInstance(null)} />}
+      {showImport && <ImportExistingModal onClose={() => setShowImport(false)} />}
     </div>
   )
 }
@@ -363,7 +379,7 @@ function InstanceCard({
   )
 }
 
-function EmptyState({ onOpenCreate }: { onOpenCreate: () => void }) {
+function EmptyState({ onOpenCreate, onOpenImport }: { onOpenCreate: () => void; onOpenImport: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-full p-6 animate-fade-in">
       <div className="w-20 h-20 rounded-2xl bg-surface-800/50 border border-surface-700/50 flex items-center justify-center mb-6">
@@ -379,10 +395,21 @@ function EmptyState({ onOpenCreate }: { onOpenCreate: () => void }) {
 
       <h2 className="text-xl font-bold text-white mb-2">No instances yet</h2>
       <p className="text-sm text-surface-400 text-center max-w-sm mb-6">
-        Create your first Minecraft instance to get started. You can install mods, configure versions, and manage everything from here.
+        Create your first Minecraft instance to get started, or import existing installations from another launcher.
       </p>
 
       <div className="flex items-center gap-3">
+        <button
+          onClick={onOpenImport}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-surface-800 hover:bg-surface-700 border border-surface-700/50 text-surface-300 hover:text-white text-sm font-medium transition-colors"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          Import
+        </button>
         <button
           onClick={onOpenCreate}
           className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-flexo-500 hover:bg-flexo-600 text-white text-sm font-medium transition-colors shadow-lg shadow-flexo-500/20"

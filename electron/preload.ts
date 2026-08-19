@@ -99,6 +99,11 @@ export interface ElectronAPI {
     setLastPlayed: (id: string) => Promise<boolean>
     ping: (address: string) => Promise<any>
   }
+  import: {
+    scan: (dir?: string) => Promise<any[]>
+    getSuggestions: () => Promise<string[]>
+    addInstance: (config: any) => Promise<any>
+  }
 }
 
 function onEvent(channel: string, callback: (...args: any[]) => void) {
@@ -207,6 +212,11 @@ const electronAPI: ElectronAPI = {
     remove: (id: string) => ipcRenderer.invoke('servers:remove', id),
     setLastPlayed: (id: string) => ipcRenderer.invoke('servers:set-last-played', id),
     ping: (address: string) => ipcRenderer.invoke('servers:ping', address),
+  },
+  import: {
+    scan: (dir?: string) => ipcRenderer.invoke('import:scan', dir),
+    getSuggestions: () => ipcRenderer.invoke('import:get-suggestions'),
+    addInstance: (config: any) => ipcRenderer.invoke('import:add-instance', config),
   },
 }
 

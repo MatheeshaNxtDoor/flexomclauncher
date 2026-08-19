@@ -13,6 +13,7 @@ import { ModLoaderService } from './services/modloader'
 import { autoUpdater, UpdateInfo } from 'electron-updater'
 import { ServerStore } from './store/servers'
 import { pingServer, parseServerAddress } from './services/serverPing'
+import { scanMinecraftDirectory, getDefaultScanPaths } from './services/importDetection'
 
 const logFile = path.join(app.getPath('userData'), 'launcher.log')
 function log(msg: string) {
@@ -168,6 +169,26 @@ function initializeServices() {
   ipcMain.handle('servers:ping', async (_e: any, address: string) => {
     const { host, port } = parseServerAddress(address)
     return pingServer(host, port)
+  })
+
+  ipcMain.handle('import:scan', (_e: any, dir?: string) => {
+    const scanDir = dir || getDefaultScanPaths()[0]
+    if (!scanDir) return []
+    return scanMinecraftDirectory(scanDir)
+  })
+  ipcMain.handle('import:get-suggestions', () => getDefaultScanPaths())
+  ipcMain.handle('import:add-instance', (_e: any, config: { name: string; gameDirectory: string; version: string; versionId: string; modLoader: string; modLoaderVersion: string }) => {
+    const existing = instanceStore.getAllInstances().find(i =>
+      i.gameDirectory === config.gameDirectory && i.version === config.version && i.modLoader === config.modLoader
+    )
+    if (existing) return existing
+    return instanceStore.createInstance({
+      name: config.name,
+      version: config.version,
+      modLoader: config.modLoader,
+      modLoaderVersion: config.modLoaderVersion,
+      gameDirectory: config.gameDirectory,
+    })
   })
 
   ipcMain.handle('minecraft:get-version-manifest', async () => minecraftSvc.getVersionManifest())

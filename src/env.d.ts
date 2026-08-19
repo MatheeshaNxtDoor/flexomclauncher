@@ -99,6 +99,11 @@ declare global {
         setLastPlayed: (id: string) => Promise<boolean>
         ping: (address: string) => Promise<any>
       }
+      import: {
+        scan: (dir?: string) => Promise<any[]>
+        getSuggestions: () => Promise<string[]>
+        addInstance: (config: any) => Promise<any>
+      }
     }
   }
 }
