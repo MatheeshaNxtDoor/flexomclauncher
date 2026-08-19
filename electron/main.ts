@@ -398,8 +398,9 @@ function setupAutoUpdater() {
     })
   })
   autoUpdater.on('update-downloaded', () => {
-    log('UPDATE: downloaded, will install on quit')
+    log('UPDATE: downloaded, installing now')
     sendToRenderer('updater:update-downloaded')
+    autoUpdater.quitAndInstall()
   })
   autoUpdater.on('error', (err) => {
     log(`UPDATE ERROR: ${err.message}`)
