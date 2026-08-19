@@ -1,7 +1,23 @@
 import { Mod } from '../stores/marketplaceStore'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useInstanceStore } from '../stores/instanceStore'
 import { useDownloadStore } from '../stores/downloadStore'
+
+const CONTENT_DIRS: Record<string, string> = {
+  mod: 'mods',
+  shader: 'shaderpacks',
+  resourcepack: 'resourcepacks',
+  datapack: 'datapacks',
+  modpack: 'mods',
+}
+
+const CONTENT_LABELS: Record<string, string> = {
+  mod: 'Mods',
+  shader: 'Shader Packs',
+  resourcepack: 'Resource Packs',
+  datapack: 'Datapacks',
+  modpack: 'Mods',
+}
 
 export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: () => void }) {
   const { instances, loadInstances } = useInstanceStore()
@@ -12,6 +28,10 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
   const [versions, setVersions] = useState<any[]>([])
   const [selectedVersionId, setSelectedVersionId] = useState('')
   const [loadingVersions, setLoadingVersions] = useState(true)
+
+  const selectedVersion = useMemo(() => {
+    return versions.find(v => v.id === selectedVersionId)
+  }, [versions, selectedVersionId])
 
   useEffect(() => {
     loadInstances()
@@ -33,6 +53,24 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
     }
   }
 
+  const selectedInstance = useMemo(() => {
+    return instances.find(i => i.id === selectedInstanceId)
+  }, [instances, selectedInstanceId])
+
+  const filteredVersions = useMemo(() => {
+    if (!selectedInstance) return versions
+    return versions.filter(v =>
+      v.game_versions?.includes(selectedInstance.version) &&
+      (!selectedInstance.modLoader || selectedInstance.modLoader === 'vanilla' || v.loaders?.includes(selectedInstance.modLoader))
+    )
+  }, [versions, selectedInstance])
+
+  useEffect(() => {
+    if (filteredVersions.length > 0 && !filteredVersions.find(v => v.id === selectedVersionId)) {
+      setSelectedVersionId(filteredVersions[0].id)
+    }
+  }, [filteredVersions])
+
   const handleInstall = async () => {
     if (!selectedInstanceId || !selectedVersionId) return
     setIsInstalling(true)
@@ -46,9 +84,7 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
     }
 
     const projectType = mod.projectType || 'mod'
-    const subDir = projectType === 'shader' ? 'shaderpacks'
-      : projectType === 'resourcepack' ? 'resourcepacks'
-      : 'mods'
+    const subDir = CONTENT_DIRS[projectType] || 'mods'
     const targetDir = `${instance.gameDirectory}/${subDir}`
     const version = versions.find(v => v.id === selectedVersionId)
     const downloadId = `mod-${mod.id}-${Date.now()}`
@@ -77,7 +113,27 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
     }, 300)
 
     try {
-      setInstallStatus('Downloading...')
+      setInstallStatus(`Downloading ${CONTENT_LABELS[projectType] || 'content'}...`)
+
+      if (version?.dependencies?.length) {
+        setInstallStatus('Resolving dependencies...')
+        const deps = await window.electronAPI.marketplace.resolveDependencies(
+          selectedVersionId,
+          instance.version,
+          instance.modLoader || 'fabric'
+        )
+        if (deps.length > 0) {
+          setInstallStatus(`Installing ${deps.length} dependencies...`)
+          for (const dep of deps) {
+            const depVersions = await window.electronAPI.marketplace.getVersions(dep.projectId)
+            const depVersion = depVersions.find((v: any) => v.id === dep.versionId)
+            if (depVersion) {
+              await window.electronAPI.marketplace.installMod(dep.projectId, dep.versionId, targetDir)
+            }
+          }
+        }
+      }
+
       await window.electronAPI.marketplace.installMod(mod.id, selectedVersionId, targetDir)
 
       clearInterval(progressInterval)
@@ -112,6 +168,9 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
     }
   }
 
+  const projectType = mod.projectType || 'mod'
+  const contentLabel = CONTENT_LABELS[projectType] || 'Content'
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -142,7 +201,12 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
               )}
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white">{mod.title}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-bold text-white">{mod.title}</h2>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-flexo-500/20 text-flexo-400 font-medium capitalize">
+                  {projectType}
+                </span>
+              </div>
               <p className="text-sm text-surface-400">by {mod.author}</p>
             </div>
           </div>
@@ -190,29 +254,8 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
             </div>
           </div>
 
-          <div className="w-64 p-6 border-l border-surface-700/50">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-surface-500 mb-3">Install</h3>
-
-            <div className="mb-4">
-              <label className="text-xs text-surface-400 mb-1.5 block">Version</label>
-              {loadingVersions ? (
-                <div className="w-full h-9 rounded-lg bg-surface-800 border border-surface-700 flex items-center justify-center">
-                  <div className="w-4 h-4 border-2 border-surface-600 border-t-surface-400 rounded-full animate-spin" />
-                </div>
-              ) : (
-                <select
-                  value={selectedVersionId}
-                  onChange={(e) => setSelectedVersionId(e.target.value)}
-                  className="w-full h-9 px-3 rounded-lg bg-surface-800 border border-surface-700 text-white text-sm focus:outline-none focus:border-flexo-500/50"
-                >
-                  {versions.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.version_number} ({v.version_type})
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
+          <div className="w-72 p-6 border-l border-surface-700/50">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-surface-500 mb-3">Install {contentLabel}</h3>
 
             <div className="mb-4">
               <label className="text-xs text-surface-400 mb-1.5 block">Target Instance</label>
@@ -224,11 +267,66 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
                 <option value="">Select instance...</option>
                 {instances.map((inst) => (
                   <option key={inst.id} value={inst.id}>
-                    {inst.name} ({inst.version})
+                    {inst.name} ({inst.version} / {inst.modLoader || 'vanilla'})
                   </option>
                 ))}
               </select>
+              {selectedInstance && (
+                <p className="text-[10px] text-surface-500 mt-1">
+                  Files will be installed to: {CONTENT_DIRS[projectType] || 'mods'}/
+                </p>
+              )}
             </div>
+
+            <div className="mb-4">
+              <label className="text-xs text-surface-400 mb-1.5 block">Version</label>
+              {loadingVersions ? (
+                <div className="w-full h-9 rounded-lg bg-surface-800 border border-surface-700 flex items-center justify-center">
+                  <div className="w-4 h-4 border-2 border-surface-600 border-t-surface-400 rounded-full animate-spin" />
+                </div>
+              ) : (
+                <>
+                  <select
+                    value={selectedVersionId}
+                    onChange={(e) => setSelectedVersionId(e.target.value)}
+                    className="w-full h-9 px-3 rounded-lg bg-surface-800 border border-surface-700 text-white text-sm focus:outline-none focus:border-flexo-500/50"
+                  >
+                    {(selectedInstance ? filteredVersions : versions).map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.version_number} ({v.version_type})
+                      </option>
+                    ))}
+                  </select>
+                  {selectedInstance && filteredVersions.length < versions.length && (
+                    <p className="text-[10px] text-surface-500 mt-1">
+                      Showing {filteredVersions.length} of {versions.length} versions compatible with {selectedInstance.version} / {selectedInstance.modLoader || 'vanilla'}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
+            {selectedVersion && (
+              <div className="mb-4 p-2 rounded-lg bg-surface-800/50 border border-surface-700/30">
+                <div className="flex flex-wrap gap-1">
+                  {selectedVersion.game_versions?.map((gv: string) => (
+                    <span key={gv} className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">
+                      MC {gv}
+                    </span>
+                  ))}
+                  {selectedVersion.loaders?.map((l: string) => (
+                    <span key={l} className="text-[9px] px-1.5 py-0.5 rounded bg-flexo-500/10 text-flexo-400 capitalize">
+                      {l}
+                    </span>
+                  ))}
+                </div>
+                {selectedVersion.files?.[0] && (
+                  <p className="text-[9px] text-surface-500 mt-1 truncate">
+                    {selectedVersion.files[0].filename}
+                  </p>
+                )}
+              </div>
+            )}
 
             {installStatus && (
               <div className={`mb-3 p-2 rounded-lg text-xs ${
@@ -238,7 +336,12 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
                   ? 'bg-green-500/10 text-green-400'
                   : 'bg-surface-800 text-surface-300'
               }`}>
-                {installStatus}
+                <div className="flex items-center gap-2">
+                  {isInstalling && !installStatus.includes('Failed') && !installStatus.includes('success') && (
+                    <div className="w-3 h-3 border-2 border-flexo-400/30 border-t-flexo-400 rounded-full animate-spin shrink-0" />
+                  )}
+                  {installStatus}
+                </div>
               </div>
             )}
 
@@ -256,7 +359,7 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
                   <line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
               )}
-              {isInstalling ? 'Installing...' : 'Install'}
+              {isInstalling ? 'Installing...' : `Install ${contentLabel}`}
             </button>
           </div>
         </div>

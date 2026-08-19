@@ -10,7 +10,7 @@ import { ModrinthService } from './services/modrinth'
 import { AuthlibService } from './services/authlib'
 import { DownloadManager } from './services/downloads'
 import { ModLoaderService } from './services/modloader'
-import { autoUpdater } from 'electron-updater'
+import { autoUpdater, UpdateInfo } from 'electron-updater'
 
 const logFile = path.join(app.getPath('userData'), 'launcher.log')
 function log(msg: string) {
@@ -64,13 +64,6 @@ function createWindow() {
   } else {
     const htmlPath = path.join(__dirname, '..', 'dist', 'index.html')
     log(`Loading: ${htmlPath} exists=${fs.existsSync(htmlPath)}`)
-    log(`__dirname contents: ${fs.readdirSync(__dirname).join(', ')}`)
-    const upDir = path.join(__dirname, '..')
-    log(`parent contents: ${fs.readdirSync(upDir).join(', ')}`)
-    const distDir = path.join(upDir, 'dist')
-    if (fs.existsSync(distDir)) {
-      log(`dist contents: ${fs.readdirSync(distDir).join(', ')}`)
-    }
     mainWindow.loadFile(htmlPath)
   }
 
@@ -83,7 +76,9 @@ function createWindow() {
 }
 
 function sendToRenderer(channel: string, ...args: any[]) {
-  mainWindow?.webContents.send(channel, ...args)
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, ...args)
+  }
 }
 
 function initializeServices() {
@@ -182,12 +177,14 @@ function initializeServices() {
 
     if (instance.modLoader !== 'vanilla') {
       sendToRenderer('instance:setup-progress', { instanceId, step: `Installing ${loaderLabel} mod loader...` })
-      await modLoaderSvc.installLoader(instance.modLoader, instance.version, gameDir, (msg) => {
-        sendToRenderer('instance:setup-progress', { instanceId, step: msg })
-      })
+      const loaderResult = await modLoaderSvc.installLoader(
+        instance.modLoader, instance.version, gameDir, (msg) => {
+          sendToRenderer('instance:setup-progress', { instanceId, step: msg })
+        },
+        instance.modLoaderVersion
+      )
 
-      const installedVersionId = modLoaderSvc.getVersionId(instance.modLoader, instance.version)
-      const clientJar = path.join(gameDir, 'versions', installedVersionId, `${installedVersionId}.jar`)
+      const clientJar = path.join(gameDir, 'versions', loaderResult.versionId, `${loaderResult.versionId}.jar`)
       if (!fs.existsSync(clientJar)) {
         const vanillaJar = path.join(gameDir, 'versions', instance.version, `${instance.version}.jar`)
         if (fs.existsSync(vanillaJar)) {
@@ -257,8 +254,6 @@ function initializeServices() {
 
       const mainClass = versionJson.mainClassClient || versionJson.mainClass
       log(`LAUNCH: mainClass=${mainClass}`)
-      log(`LAUNCH: javaArgs=${JSON.stringify(javaArgs)}`)
-      log(`LAUNCH: gameArgs=${JSON.stringify(gameArgs)}`)
 
       const { spawn } = await import('child_process')
       const proc = spawn(javaPath, [...javaArgs, mainClass, ...gameArgs], {
@@ -268,12 +263,10 @@ function initializeServices() {
 
       proc.stdout?.on('data', (data: Buffer) => {
         const msg = data.toString()
-        log(`GAME STDOUT: ${msg.trim()}`)
         sendToRenderer('launcher:game-log', { instanceId, stream: 'stdout', data: msg })
       })
       proc.stderr?.on('data', (data: Buffer) => {
         const msg = data.toString()
-        log(`GAME STDERR: ${msg.trim()}`)
         sendToRenderer('launcher:game-log', { instanceId, stream: 'stderr', data: msg })
       })
       proc.on('error', (err) => {
@@ -314,15 +307,29 @@ function initializeServices() {
   ipcMain.handle('marketplace:search', async (_e: any, query: string, filters?: any) => modrinthSvc.searchMods(query, filters))
   ipcMain.handle('marketplace:get-project', async (_e: any, projectId: string) => modrinthSvc.getProject(projectId))
   ipcMain.handle('marketplace:get-versions', async (_e: any, projectId: string, filters?: any) => modrinthSvc.getProjectVersions(projectId, filters))
+  ipcMain.handle('marketplace:get-multiple-projects', async (_e: any, projectIds: string[]) => modrinthSvc.getMultipleProjects(projectIds))
+  ipcMain.handle('marketplace:get-multiple-versions', async (_e: any, versionIds: string[]) => modrinthSvc.getMultipleVersions(versionIds))
   ipcMain.handle('marketplace:install-mod', async (_e: any, projectId: string, versionId: string, targetDir: string) => {
     const versions = await modrinthSvc.getProjectVersions(projectId)
     const version = versions.find((v: any) => v.id === versionId)
     if (!version) throw new Error('Version not found')
     return modrinthSvc.downloadMod(version, targetDir)
   })
+  ipcMain.handle('marketplace:resolve-dependencies', async (_e: any, versionId: string, gameVersion: string, loader: string) => {
+    return modrinthSvc.resolveDependencies(versionId, gameVersion, loader)
+  })
 
-  ipcMain.handle('modpack:install', async (_e: any, modpackUrl: string, instanceDir: string) => modrinthSvc.installModpack(modpackUrl, instanceDir))
+  ipcMain.handle('modpack:install', async (_e: any, modpackUrl: string, instanceDir: string, onProgress?: (msg: string) => void) => {
+    return modrinthSvc.installModpack(modpackUrl, instanceDir, onProgress)
+  })
   ipcMain.handle('authlib:download', async () => authlibSvc.downloadAuthlibInjector())
+
+  ipcMain.handle('modloader:install', async (_e: any, modLoader: string, gameVersion: string, gameDir: string, loaderVersion?: string) => {
+    return modLoaderSvc.installLoader(modLoader as any, gameVersion, gameDir, undefined, loaderVersion)
+  })
+  ipcMain.handle('modloader:get-versions', async (_e: any, modLoader: string, gameVersion: string) => {
+    return modLoaderSvc.getAvailableVersions(modLoader as any, gameVersion)
+  })
 
   ipcMain.handle('settings:get', () => {
     const settingsPath = path.join(app.getPath('userData'), 'settings.json')
@@ -357,31 +364,32 @@ function initializeServices() {
   log('All IPC handlers registered')
 }
 
-app.whenReady().then(async () => {
-  log('app.whenReady fired')
-  createWindow()
-  initializeServices()
-  log('Initialization complete')
-
-  // Auto-update: configure once, check on startup (non-blocking)
+function setupAutoUpdater() {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.forceDevUpdateConfig = false
   autoUpdater.logger = {
     info: (msg: string) => log(`[updater] ${msg}`),
     warn: (msg: string) => log(`[updater] ${msg}`),
     error: (msg: string) => log(`[updater] ${msg}`),
     debug: (msg: string) => log(`[updater:debug] ${msg}`),
   } as any
-  autoUpdater.on('update-available', (info) => {
+
+  autoUpdater.on('update-available', (info: UpdateInfo) => {
     log(`UPDATE AVAILABLE: ${info.version}`)
-    sendToRenderer('updater:update-available', info)
+    sendToRenderer('updater:update-available', { version: info.version, releaseDate: info.releaseDate })
   })
   autoUpdater.on('update-not-available', () => {
     log('UPDATE: already up to date')
     sendToRenderer('updater:update-not-available')
   })
   autoUpdater.on('download-progress', (progress) => {
-    sendToRenderer('updater:download-progress', progress)
+    sendToRenderer('updater:download-progress', {
+      percent: progress.percent,
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total,
+    })
   })
   autoUpdater.on('update-downloaded', () => {
     log('UPDATE: downloaded, will install on quit')
@@ -391,15 +399,25 @@ app.whenReady().then(async () => {
     log(`UPDATE ERROR: ${err.message}`)
     sendToRenderer('updater:error', err.message)
   })
+}
 
-  setTimeout(async () => {
-    try {
-      const result = await autoUpdater.checkForUpdates()
-      log(`UPDATE CHECK: ${result?.updateInfo?.version || 'no update found'}`)
-    } catch (e: any) {
-      log(`UPDATE CHECK FAILED: ${e.message}`)
-    }
-  }, 3000)
+app.whenReady().then(async () => {
+  log('app.whenReady fired')
+  createWindow()
+  initializeServices()
+  setupAutoUpdater()
+  log('Initialization complete')
+
+  if (!isDev) {
+    setTimeout(async () => {
+      try {
+        const result = await autoUpdater.checkForUpdates()
+        log(`UPDATE CHECK: ${result?.updateInfo?.version || 'no update found'}`)
+      } catch (e: any) {
+        log(`UPDATE CHECK FAILED: ${e.message}`)
+      }
+    }, 5000)
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

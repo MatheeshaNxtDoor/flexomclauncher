@@ -47,7 +47,7 @@ export const useMarketplaceStore = create<MarketplaceState>((set, get) => ({
     const { selectedProjectType } = get()
     set({ isLoading: true, searchQuery: query, error: null })
     try {
-      const filters: any = { limit: 20 }
+      const filters: any = { limit: 30 }
       if (query) filters.query = query
       if (selectedProjectType !== 'all') filters.projectType = selectedProjectType
 
@@ -81,7 +81,7 @@ export const useMarketplaceStore = create<MarketplaceState>((set, get) => ({
     const type = projectType || get().selectedProjectType
     set({ isLoading: true, error: null })
     try {
-      const filters: any = { limit: 20 }
+      const filters: any = { limit: 30, index: 'downloads' }
       if (type !== 'all') filters.projectType = type
 
       const result = await window.electronAPI.marketplace.search('', filters)

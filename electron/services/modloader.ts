@@ -2,6 +2,14 @@ import fs from 'fs'
 import path from 'path'
 import https from 'https'
 import http from 'http'
+import crypto from 'crypto'
+
+export type ModLoaderType = 'vanilla' | 'fabric' | 'forge' | 'neoforge' | 'quilt'
+
+export interface LoaderInstallResult {
+  loaderVersion: string
+  versionId: string
+}
 
 export class ModLoaderService {
   private cacheDir: string
@@ -12,37 +20,74 @@ export class ModLoaderService {
   }
 
   async installLoader(
-    modLoader: string,
+    modLoader: ModLoaderType,
     gameVersion: string,
     gameDir: string,
-    onProgress?: (msg: string) => void
-  ): Promise<void> {
+    onProgress?: (msg: string) => void,
+    loaderVersionOverride?: string
+  ): Promise<LoaderInstallResult> {
     switch (modLoader) {
       case 'fabric':
-        await this.installFabric(gameVersion, gameDir, onProgress)
-        break
+        return this.installFabric(gameVersion, gameDir, onProgress, loaderVersionOverride)
       case 'forge':
-        await this.installForge(gameVersion, gameDir, onProgress)
-        break
+        return this.installForge(gameVersion, gameDir, onProgress, loaderVersionOverride)
       case 'neoforge':
-        await this.installNeoForge(gameVersion, gameDir, onProgress)
-        break
+        return this.installNeoForge(gameVersion, gameDir, onProgress, loaderVersionOverride)
       case 'quilt':
-        await this.installQuilt(gameVersion, gameDir, onProgress)
-        break
+        return this.installQuilt(gameVersion, gameDir, onProgress, loaderVersionOverride)
       case 'vanilla':
       default:
-        break
+        return { loaderVersion: '', versionId: gameVersion }
     }
   }
 
-  private async installFabric(gameVersion: string, gameDir: string, onProgress?: (msg: string) => void) {
+  async getAvailableVersions(modLoader: ModLoaderType, gameVersion: string): Promise<string[]> {
+    try {
+      switch (modLoader) {
+        case 'fabric': {
+          const data = await this.fetchJson(`https://meta.fabricmc.net/v2/versions/loader/${gameVersion}`)
+          if (!data || !data.length) return []
+          return data.map((l: any) => l.loader.version)
+        }
+        case 'forge': {
+          const promos = await this.fetchJson('https://files.minecraftforge.net/maven/net/minecraftforge/forge/promotions_slim.json')
+          if (!promos?.promos) return []
+          return Object.keys(promos.promos)
+            .filter(k => k.startsWith(`${gameVersion}-`) && k.endsWith('-latest'))
+            .map(k => promos.promos[k])
+        }
+        case 'neoforge': {
+          const data = await this.fetchJson('https://projects.neoforged.net/api/v1/projects/neoforged/neoforge')
+          if (!data?.gameVersions?.[gameVersion]) return []
+          return data.gameVersions[gameVersion].map((v: any) => v.version)
+        }
+        case 'quilt': {
+          const data = await this.fetchJson(`https://meta.quiltmc.org/v3/versions/loader/${gameVersion}`)
+          if (!data || !data.length) return []
+          return data.map((l: any) => l.loader.version)
+        }
+        default:
+          return []
+      }
+    } catch (e) {
+      console.warn(`Failed to get available versions for ${modLoader}:`, e)
+      return []
+    }
+  }
+
+  private async installFabric(
+    gameVersion: string, gameDir: string,
+    onProgress?: (msg: string) => void, versionOverride?: string
+  ): Promise<LoaderInstallResult> {
     onProgress?.('Fetching Fabric loader metadata...')
 
     const loaderData = await this.fetchJson(`https://meta.fabricmc.net/v2/versions/loader/${gameVersion}`)
-    if (!loaderData || !loaderData.length) throw new Error(`No Fabric loader available for ${gameVersion}`)
+    if (!loaderData?.length) throw new Error(`No Fabric loader available for ${gameVersion}`)
 
-    const loader = loaderData[0]
+    const loader = versionOverride
+      ? loaderData.find((l: any) => l.loader.version === versionOverride) || loaderData[0]
+      : loaderData[0]
+
     const loaderVersion = loader.loader.version
     const intermediaryVersion = loader.intermediary.version
 
@@ -66,10 +111,7 @@ export class ModLoaderService {
     }
 
     onProgress?.('Creating Fabric version profile...')
-    const versionsDir = path.join(gameDir, 'versions')
     const versionId = `${gameVersion}-fabric-${loaderVersion}`
-    const versionDir = path.join(versionsDir, versionId)
-    if (!fs.existsSync(versionDir)) fs.mkdirSync(versionDir, { recursive: true })
 
     const versionJson = {
       id: versionId,
@@ -87,39 +129,61 @@ export class ModLoaderService {
           '--versionType', 'Fabric',
         ],
         jvm: [
-          '-Dfabric.remapClasspathFile=${fabric_classpath}',
+          { rules: [{ features: { is_demo_user: false } }], value: '-Dfabric.remapClasspathFile=${fabric_classpath}' },
         ],
       },
       libraries: [
         {
           name: `net.fabricmc:intermediary:${intermediaryVersion}:v2`,
           url: 'https://maven.fabricmc.net/',
+          md5: undefined as string | undefined,
         },
         {
           name: `net.fabricmc:fabric-loader:${loaderVersion}`,
           url: 'https://maven.fabricmc.net/',
+          md5: undefined as string | undefined,
         },
         {
-          name: `net.fabricmc:sponge-mixin:0.15.11+mixin.0.8.5`,
+          name: 'net.fabricmc:sponge-mixin:0.15.11+mixin.0.8.5',
           url: 'https://maven.fabricmc.net/',
+          md5: undefined as string | undefined,
+        },
+        {
+          name: `net.fabricmc:fabric-language-kotlin:1.12.3+kotlin2.0.21`,
+          url: 'https://maven.fabricmc.net/',
+          md5: undefined as string | undefined,
         },
       ],
     }
 
+    const versionsDir = path.join(gameDir, 'versions')
+    const versionDir = path.join(versionsDir, versionId)
+    if (!fs.existsSync(versionDir)) fs.mkdirSync(versionDir, { recursive: true })
+
     fs.writeFileSync(path.join(versionDir, `${versionId}.json`), JSON.stringify(versionJson, null, 2))
     onProgress?.(`Fabric ${loaderVersion} installed for ${gameVersion}`)
+
+    return { loaderVersion, versionId }
   }
 
-  private async installForge(gameVersion: string, gameDir: string, onProgress?: (msg: string) => void) {
+  private async installForge(
+    gameVersion: string, gameDir: string,
+    onProgress?: (msg: string) => void, versionOverride?: string
+  ): Promise<LoaderInstallResult> {
     onProgress?.('Fetching Forge version metadata...')
 
     const promos = await this.fetchJson('https://files.minecraftforge.net/maven/net/minecraftforge/forge/promotions_slim.json')
-    if (!promos || !promos.promos) throw new Error('Failed to fetch Forge versions')
+    if (!promos?.promos) throw new Error('Failed to fetch Forge versions')
 
-    const latestKey = Object.keys(promos.promos).find(k => k.startsWith(`${gameVersion}-`) && k.endsWith('-latest'))
-    if (!latestKey) throw new Error(`No Forge version available for ${gameVersion}`)
+    let forgeVersion: string
+    if (versionOverride) {
+      forgeVersion = versionOverride
+    } else {
+      const latestKey = Object.keys(promos.promos).find(k => k.startsWith(`${gameVersion}-`) && k.endsWith('-latest'))
+      if (!latestKey) throw new Error(`No Forge version available for ${gameVersion}`)
+      forgeVersion = promos.promos[latestKey]
+    }
 
-    const forgeVersion = promos.promos[latestKey]
     onProgress?.(`Downloading Forge ${forgeVersion} installer...`)
 
     const installerJar = path.join(this.cacheDir, `forge-${gameVersion}-${forgeVersion}-installer.jar`)
@@ -142,23 +206,35 @@ export class ModLoaderService {
         stdio: 'pipe',
       })
     } catch (err: any) {
-      throw new Error(`Forge installer failed: ${err.message}`)
+      const stderr = err.stderr?.toString() || ''
+      throw new Error(`Forge installer failed: ${err.message}${stderr ? '\n' + stderr : ''}`)
     }
 
+    const versionId = `${gameVersion}-${forgeVersion}`
     onProgress?.(`Forge ${forgeVersion} installed for ${gameVersion}`)
+
+    return { loaderVersion: forgeVersion, versionId }
   }
 
-  private async installNeoForge(gameVersion: string, gameDir: string, onProgress?: (msg: string) => void) {
+  private async installNeoForge(
+    gameVersion: string, gameDir: string,
+    onProgress?: (msg: string) => void, versionOverride?: string
+  ): Promise<LoaderInstallResult> {
     onProgress?.('Fetching NeoForge version metadata...')
 
     const data = await this.fetchJson('https://projects.neoforged.net/api/v1/projects/neoforged/neoforge')
     if (!data) throw new Error('Failed to fetch NeoForge versions')
 
     const versions = data.gameVersions?.[gameVersion]
-    if (!versions || !versions.length) throw new Error(`No NeoForge version available for ${gameVersion}`)
+    if (!versions?.length) throw new Error(`No NeoForge version available for ${gameVersion}`)
 
-    const latest = versions[0]
-    const neoforgeVersion = latest.version
+    let neoforgeVersion: string
+    if (versionOverride) {
+      neoforgeVersion = versionOverride
+    } else {
+      neoforgeVersion = versions[0].version
+    }
+
     onProgress?.(`Downloading NeoForge ${neoforgeVersion} installer...`)
 
     const installerJar = path.join(this.cacheDir, `neoforge-${neoforgeVersion}-installer.jar`)
@@ -181,19 +257,29 @@ export class ModLoaderService {
         stdio: 'pipe',
       })
     } catch (err: any) {
-      throw new Error(`NeoForge installer failed: ${err.message}`)
+      const stderr = err.stderr?.toString() || ''
+      throw new Error(`NeoForge installer failed: ${err.message}${stderr ? '\n' + stderr : ''}`)
     }
 
+    const versionId = `${gameVersion}-${neoforgeVersion}`
     onProgress?.(`NeoForge ${neoforgeVersion} installed for ${gameVersion}`)
+
+    return { loaderVersion: neoforgeVersion, versionId }
   }
 
-  private async installQuilt(gameVersion: string, gameDir: string, onProgress?: (msg: string) => void) {
+  private async installQuilt(
+    gameVersion: string, gameDir: string,
+    onProgress?: (msg: string) => void, versionOverride?: string
+  ): Promise<LoaderInstallResult> {
     onProgress?.('Fetching Quilt loader metadata...')
 
     const loaderData = await this.fetchJson(`https://meta.quiltmc.org/v3/versions/loader/${gameVersion}`)
-    if (!loaderData || !loaderData.length) throw new Error(`No Quilt loader available for ${gameVersion}`)
+    if (!loaderData?.length) throw new Error(`No Quilt loader available for ${gameVersion}`)
 
-    const loader = loaderData[0]
+    const loader = versionOverride
+      ? loaderData.find((l: any) => l.loader.version === versionOverride) || loaderData[0]
+      : loaderData[0]
+
     const loaderVersion = loader.loader.version
 
     onProgress?.(`Downloading Quilt loader ${loaderVersion}...`)
@@ -207,10 +293,7 @@ export class ModLoaderService {
     }
 
     onProgress?.('Creating Quilt version profile...')
-    const versionsDir = path.join(gameDir, 'versions')
     const versionId = `${gameVersion}-quilt-${loaderVersion}`
-    const versionDir = path.join(versionsDir, versionId)
-    if (!fs.existsSync(versionDir)) fs.mkdirSync(versionDir, { recursive: true })
 
     const versionJson = {
       id: versionId,
@@ -233,43 +316,55 @@ export class ModLoaderService {
           name: `org.quiltmc:quilt-loader:${loaderVersion}`,
           url: 'https://maven.quiltmc.org/repository/release/',
         },
+        {
+          name: 'org.quiltmc:quilt-sponge-mixin:0.8.5+build.3',
+          url: 'https://maven.quiltmc.org/repository/release/',
+        },
       ],
     }
 
+    const versionsDir = path.join(gameDir, 'versions')
+    const versionDir = path.join(versionsDir, versionId)
+    if (!fs.existsSync(versionDir)) fs.mkdirSync(versionDir, { recursive: true })
+
     fs.writeFileSync(path.join(versionDir, `${versionId}.json`), JSON.stringify(versionJson, null, 2))
     onProgress?.(`Quilt ${loaderVersion} installed for ${gameVersion}`)
+
+    return { loaderVersion, versionId }
   }
 
-  getVersionId(modLoader: string, gameVersion: string, loaderVersion?: string): string {
+  getVersionId(modLoader: ModLoaderType, gameVersion: string, loaderVersion?: string): string {
     if (modLoader === 'vanilla') return gameVersion
     if (modLoader === 'fabric' || modLoader === 'quilt') {
       return `${gameVersion}-${modLoader}-${loaderVersion || 'latest'}`
     }
+    if (modLoader === 'forge' || modLoader === 'neoforge') {
+      return `${gameVersion}-${loaderVersion || 'latest'}`
+    }
     return gameVersion
   }
 
-  private async findJava(): Promise<string | null> {
+  async findJava(): Promise<string | null> {
     const { execSync } = await import('child_process')
-    const tryCommands = ['javaw', 'java']
-    for (const cmd of tryCommands) {
+
+    for (const cmd of ['javaw', 'java']) {
       try {
-        const result = execSync(`"${cmd}" -version`, { stdio: 'pipe', timeout: 5000 })
-        const output = result.toString()
+        execSync(`"${cmd}" -version`, { stdio: 'pipe', timeout: 5000 })
         return cmd
       } catch {}
     }
-    const paths = [
-      'C:\\Program Files\\Java',
-      'C:\\Program Files (x86)\\Java',
-      `${process.env.USERPROFILE}\\.jdks`,
-    ]
+
+    const paths = process.platform === 'win32'
+      ? ['C:\\Program Files\\Java', 'C:\\Program Files (x86)\\Java', `${process.env.USERPROFILE}\\.jdks`]
+      : ['/usr/lib/jvm', '/usr/java', `${process.env.HOME}/.jdks`]
+
     for (const p of paths) {
-      if (fs.existsSync(p)) {
-        const entries = fs.readdirSync(p)
-        for (const e of entries) {
-          const javaw = path.join(p, e, 'bin', 'javaw.exe')
-          if (fs.existsSync(javaw)) return javaw
-        }
+      if (!fs.existsSync(p)) continue
+      const entries = fs.readdirSync(p)
+      for (const e of entries) {
+        const ext = process.platform === 'win32' ? 'javaw.exe' : 'java'
+        const javaBin = path.join(p, e, 'bin', ext)
+        if (fs.existsSync(javaBin)) return javaBin
       }
     }
     return null

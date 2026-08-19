@@ -9,6 +9,7 @@ export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClos
   const [loadingVersions, setLoadingVersions] = useState(true)
   const [isInstalling, setIsInstalling] = useState(false)
   const [installStatus, setInstallStatus] = useState('')
+  const [installStep, setInstallStep] = useState('')
   const [instanceName, setInstanceName] = useState(mod.title)
 
   useEffect(() => {
@@ -30,7 +31,7 @@ export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClos
   }
 
   const handleInstall = async () => {
-    if (!selectedVersionId) return
+    if (!selectedVersionId || !instanceName.trim()) return
     setIsInstalling(true)
     setInstallStatus('Creating instance...')
 
@@ -60,7 +61,7 @@ export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClos
     let progress = 5
     const progressInterval = setInterval(() => {
       if (progress < 85) {
-        progress += Math.random() * 8 + 2
+        progress += Math.random() * 4 + 1
         if (progress > 85) progress = 85
         updateDownload(downloadId, { progress, speed: (Math.random() * 3 + 1) * 1024 * 1024 })
       }
@@ -71,7 +72,8 @@ export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClos
       const loader = version.loaders?.[0] || 'fabric'
 
       updateDownload(downloadId, { progress: 10 })
-      setInstallStatus('Creating instance...')
+      setInstallStep('Creating instance...')
+      setInstallStatus(`Creating ${loader} instance for ${mcVersion}...`)
       const instance = await window.electronAPI.instances.create({
         name: instanceName,
         version: mcVersion,
@@ -80,13 +82,15 @@ export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClos
       })
 
       updateDownload(downloadId, { instanceId: instance.id, progress: 15 })
-      setInstallStatus('Setting up Minecraft files...')
+      setInstallStep('Setting up Minecraft files...')
+      setInstallStatus('Downloading Minecraft, libraries, and assets...')
       await window.electronAPI.instance.setup(instance.id)
 
       const primaryFile = version.files?.find((f: any) => f.primary) || version.files?.[0]
       if (primaryFile) {
-        updateDownload(downloadId, { progress: 80 })
-        setInstallStatus('Installing modpack...')
+        updateDownload(downloadId, { progress: 75 })
+        setInstallStep('Installing modpack...')
+        setInstallStatus('Extracting and installing modpack files...')
         const instanceData = await window.electronAPI.instances.get(instance.id)
         await window.electronAPI.modpack.install(
           primaryFile.url,
@@ -97,7 +101,7 @@ export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClos
       clearInterval(progressInterval)
       updateDownload(downloadId, { progress: 100, speed: 0, status: 'completed', completedAt: Date.now() })
       setInstallStatus('Modpack installed successfully!')
-      setTimeout(() => onClose(), 1000)
+      setTimeout(() => onClose(), 1500)
     } catch (err: any) {
       clearInterval(progressInterval)
       updateDownload(downloadId, { status: 'failed', error: err.message, progress: 0, completedAt: Date.now() })
@@ -106,6 +110,8 @@ export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClos
       setIsInstalling(false)
     }
   }
+
+  const selectedVersion = versions.find(v => v.id === selectedVersionId)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -116,7 +122,8 @@ export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClos
           <div className="absolute inset-0 bg-gradient-to-t from-surface-900 via-surface-900/60 to-transparent" />
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-surface-800/80 hover:bg-surface-700 flex items-center justify-center text-surface-400 hover:text-white transition-colors z-10"
+            disabled={isInstalling}
+            className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-surface-800/80 hover:bg-surface-700 flex items-center justify-center text-surface-400 hover:text-white transition-colors z-10 disabled:opacity-50"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
@@ -162,7 +169,8 @@ export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClos
                 type="text"
                 value={instanceName}
                 onChange={(e) => setInstanceName(e.target.value)}
-                className="w-full h-9 px-3 rounded-lg bg-surface-800 border border-surface-700 text-white text-sm focus:outline-none focus:border-flexo-500/50"
+                disabled={isInstalling}
+                className="w-full h-9 px-3 rounded-lg bg-surface-800 border border-surface-700 text-white text-sm focus:outline-none focus:border-flexo-500/50 disabled:opacity-50"
               />
             </div>
 
@@ -176,7 +184,8 @@ export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClos
                 <select
                   value={selectedVersionId}
                   onChange={(e) => setSelectedVersionId(e.target.value)}
-                  className="w-full h-9 px-3 rounded-lg bg-surface-800 border border-surface-700 text-white text-sm focus:outline-none focus:border-flexo-500/50"
+                  disabled={isInstalling}
+                  className="w-full h-9 px-3 rounded-lg bg-surface-800 border border-surface-700 text-white text-sm focus:outline-none focus:border-flexo-500/50 disabled:opacity-50"
                 >
                   {versions.map((v) => (
                     <option key={v.id} value={v.id}>
@@ -186,6 +195,21 @@ export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClos
                 </select>
               )}
             </div>
+
+            {selectedVersion && (
+              <div className="flex flex-wrap gap-2">
+                {selectedVersion.game_versions?.map((gv: string) => (
+                  <span key={gv} className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400">
+                    MC {gv}
+                  </span>
+                ))}
+                {selectedVersion.loaders?.map((l: string) => (
+                  <span key={l} className="text-[10px] px-2 py-0.5 rounded bg-flexo-500/10 text-flexo-400 capitalize">
+                    {l}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {installStatus && (
@@ -196,14 +220,20 @@ export default function ModpackInstallModal({ mod, onClose }: { mod: Mod; onClos
                 ? 'bg-green-500/10 text-green-400'
                 : 'bg-surface-800 text-surface-300'
             }`}>
-              {installStatus}
+              <div className="flex items-center gap-2">
+                {isInstalling && !installStatus.includes('Failed') && !installStatus.includes('success') && (
+                  <div className="w-3 h-3 border-2 border-flexo-400/30 border-t-flexo-400 rounded-full animate-spin shrink-0" />
+                )}
+                <span>{installStatus}</span>
+              </div>
             </div>
           )}
 
           <div className="flex items-center gap-3 mt-6">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2.5 rounded-lg bg-surface-800 text-surface-400 text-sm font-medium hover:bg-surface-700 transition-colors"
+              disabled={isInstalling}
+              className="flex-1 px-4 py-2.5 rounded-lg bg-surface-800 text-surface-400 text-sm font-medium hover:bg-surface-700 transition-colors disabled:opacity-50"
             >
               Cancel
             </button>

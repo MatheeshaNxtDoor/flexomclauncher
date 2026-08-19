@@ -47,10 +47,17 @@ export interface ElectronAPI {
     search: (query: string, filters?: any) => Promise<any>
     getProject: (projectId: string) => Promise<any>
     getVersions: (projectId: string, filters?: any) => Promise<any>
+    getMultipleProjects: (projectIds: string[]) => Promise<any[]>
+    getMultipleVersions: (versionIds: string[]) => Promise<any[]>
     installMod: (projectId: string, versionId: string, targetDir: string) => Promise<string>
+    resolveDependencies: (versionId: string, gameVersion: string, loader: string) => Promise<any[]>
   }
   modpack: {
-    install: (url: string, instanceDir: string, onProgress?: (msg: string) => void) => Promise<any>
+    install: (url: string, instanceDir: string) => Promise<any>
+  }
+  modloader: {
+    install: (modLoader: string, gameVersion: string, gameDir: string, loaderVersion?: string) => Promise<any>
+    getVersions: (modLoader: string, gameVersion: string) => Promise<string[]>
   }
   downloads: {
     createJob: (id: string, label: string, tasks: any[]) => Promise<any>
@@ -82,8 +89,11 @@ export interface ElectronAPI {
 }
 
 function onEvent(channel: string, callback: (...args: any[]) => void) {
-  ipcRenderer.on(channel, (_event, ...args) => callback(...args))
-  return () => ipcRenderer.removeListener(channel, callback)
+  const handler = (_event: any, ...args: any[]) => callback(...args)
+  ipcRenderer.on(channel, handler)
+  return () => {
+    ipcRenderer.removeListener(channel, handler)
+  }
 }
 
 const electronAPI: ElectronAPI = {
@@ -133,10 +143,17 @@ const electronAPI: ElectronAPI = {
     search: (query: string, filters?: any) => ipcRenderer.invoke('marketplace:search', query, filters),
     getProject: (projectId: string) => ipcRenderer.invoke('marketplace:get-project', projectId),
     getVersions: (projectId: string, filters?: any) => ipcRenderer.invoke('marketplace:get-versions', projectId, filters),
+    getMultipleProjects: (projectIds: string[]) => ipcRenderer.invoke('marketplace:get-multiple-projects', projectIds),
+    getMultipleVersions: (versionIds: string[]) => ipcRenderer.invoke('marketplace:get-multiple-versions', versionIds),
     installMod: (projectId: string, versionId: string, targetDir: string) => ipcRenderer.invoke('marketplace:install-mod', projectId, versionId, targetDir),
+    resolveDependencies: (versionId: string, gameVersion: string, loader: string) => ipcRenderer.invoke('marketplace:resolve-dependencies', versionId, gameVersion, loader),
   },
   modpack: {
     install: (url: string, instanceDir: string) => ipcRenderer.invoke('modpack:install', url, instanceDir),
+  },
+  modloader: {
+    install: (modLoader: string, gameVersion: string, gameDir: string, loaderVersion?: string) => ipcRenderer.invoke('modloader:install', modLoader, gameVersion, gameDir, loaderVersion),
+    getVersions: (modLoader: string, gameVersion: string) => ipcRenderer.invoke('modloader:get-versions', modLoader, gameVersion),
   },
   downloads: {
     createJob: (id: string, label: string, tasks: any[]) => ipcRenderer.invoke('downloads:create-job', id, label, tasks),
