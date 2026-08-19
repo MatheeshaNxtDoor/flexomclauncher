@@ -2,6 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore, Account } from '../stores/authStore'
 import { useInstanceStore } from '../stores/instanceStore'
 import { useState, useEffect } from 'react'
+import QuickplayServers from './QuickplayServers'
 
 const navItems = [
   { path: '/', label: 'Home', icon: HomeIcon },
@@ -62,7 +63,9 @@ export default function Sidebar() {
         </nav>
       </div>
 
-      <div className="flex-1" />
+      <div className="flex-1 overflow-y-auto">
+        <QuickplayServers />
+      </div>
 
       {showStorage && (
         <div className="mx-3 mb-3">

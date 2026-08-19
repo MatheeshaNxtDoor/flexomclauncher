@@ -27,6 +27,8 @@ export interface ModInfo {
   version: string
   source: 'modrinth' | 'curseforge'
   filename: string
+  type: 'mod' | 'shader' | 'resourcepack' | 'datapack'
+  disabled?: boolean
 }
 
 interface InstanceData {
@@ -138,5 +140,94 @@ export class InstanceStore {
       instance.mods = instance.mods.filter((m) => m.id !== modId)
       this.save()
     }
+  }
+
+  toggleMod(instanceId: string, modId: string) {
+    const instance = this.data.instances.find((i) => i.id === instanceId)
+    if (instance) {
+      const mod = instance.mods.find((m) => m.id === modId)
+      if (mod) {
+        mod.disabled = !mod.disabled
+        this.save()
+      }
+    }
+  }
+
+  listContentFiles(instanceId: string, contentType: string): Array<{ filename: string; disabled: boolean }> {
+    const instance = this.data.instances.find((i) => i.id === instanceId)
+    if (!instance) return []
+
+    const dirMap: Record<string, string> = {
+      mod: 'mods',
+      shader: 'shaderpacks',
+      resourcepack: 'resourcepacks',
+      datapack: 'datapacks',
+    }
+    const dirName = dirMap[contentType] || 'mods'
+    const contentDir = path.join(instance.gameDirectory, dirName)
+
+    if (!fs.existsSync(contentDir)) return []
+
+    const files = fs.readdirSync(contentDir).filter(f => {
+      if (contentType === 'mod') return f.endsWith('.jar')
+      if (contentType === 'shader') return f.endsWith('.zip') || f.endsWith('.jar')
+      if (contentType === 'resourcepack') return f.endsWith('.zip')
+      return true
+    })
+
+    return files.map(f => ({
+      filename: f,
+      disabled: f.endsWith('.disabled'),
+    }))
+  }
+
+  deleteModFile(instanceId: string, contentType: string, filename: string): boolean {
+    const instance = this.data.instances.find((i) => i.id === instanceId)
+    if (!instance) return false
+
+    const dirMap: Record<string, string> = {
+      mod: 'mods',
+      shader: 'shaderpacks',
+      resourcepack: 'resourcepacks',
+      datapack: 'datapacks',
+    }
+    const dirName = dirMap[contentType] || 'mods'
+    const filePath = path.join(instance.gameDirectory, dirName, filename)
+
+    if (fs.existsSync(filePath)) {
+      fs.rmSync(filePath, { force: true })
+      return true
+    }
+    return false
+  }
+
+  toggleModFile(instanceId: string, contentType: string, filename: string): string | null {
+    const instance = this.data.instances.find((i) => i.id === instanceId)
+    if (!instance) return null
+
+    const dirMap: Record<string, string> = {
+      mod: 'mods',
+      shader: 'shaderpacks',
+      resourcepack: 'resourcepacks',
+      datapack: 'datapacks',
+    }
+    const dirName = dirMap[contentType] || 'mods'
+    const contentDir = path.join(instance.gameDirectory, dirName)
+
+    if (!fs.existsSync(contentDir)) return null
+
+    const oldPath = path.join(contentDir, filename)
+    if (!fs.existsSync(oldPath)) return null
+
+    let newName: string
+    if (filename.endsWith('.disabled')) {
+      newName = filename.slice(0, -9)
+    } else {
+      newName = filename + '.disabled'
+    }
+
+    const newPath = path.join(contentDir, newName)
+    fs.renameSync(oldPath, newPath)
+    return newName
   }
 }

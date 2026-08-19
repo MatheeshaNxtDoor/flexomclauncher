@@ -25,8 +25,11 @@ declare global {
         setLastPlayed: (instanceId: string) => Promise<boolean>
         addMod: (instanceId: string, mod: any) => Promise<boolean>
         removeMod: (instanceId: string, modId: string) => Promise<boolean>
-        update: (instanceId: string, updates: any) => Promise<boolean>
         isInstalled: (instanceId: string) => Promise<boolean>
+        toggleMod: (instanceId: string, modId: string) => Promise<boolean>
+        listContentFiles: (instanceId: string, contentType: string) => Promise<Array<{ filename: string; disabled: boolean }>>
+        deleteModFile: (instanceId: string, contentType: string, filename: string) => Promise<boolean>
+        toggleModFile: (instanceId: string, contentType: string, filename: string) => Promise<string | null>
       }
       instance: {
         setup: (instanceId: string) => Promise<any>
@@ -87,6 +90,14 @@ declare global {
       }
       app: {
         getInfo: () => Promise<{ version: string; name: string; isDev: boolean }>
+      }
+      servers: {
+        list: () => Promise<any[]>
+        add: (config: any) => Promise<any>
+        update: (id: string, updates: any) => Promise<boolean>
+        remove: (id: string) => Promise<boolean>
+        setLastPlayed: (id: string) => Promise<boolean>
+        ping: (address: string) => Promise<any>
       }
     }
   }

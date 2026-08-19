@@ -11,6 +11,8 @@ import { AuthlibService } from './services/authlib'
 import { DownloadManager } from './services/downloads'
 import { ModLoaderService } from './services/modloader'
 import { autoUpdater, UpdateInfo } from 'electron-updater'
+import { ServerStore } from './store/servers'
+import { pingServer, parseServerAddress } from './services/serverPing'
 
 const logFile = path.join(app.getPath('userData'), 'launcher.log')
 function log(msg: string) {
@@ -94,6 +96,7 @@ function initializeServices() {
   const authlibSvc = new AuthlibService(userDataPath)
   const downloadMgr = new DownloadManager()
   const modLoaderSvc = new ModLoaderService(userDataPath)
+  const serverStore = new ServerStore(userDataPath)
 
   log('Services created')
 
@@ -152,6 +155,20 @@ function initializeServices() {
   ipcMain.handle('instances:add-mod', (_e: any, instanceId: string, mod: any) => { instanceStore.addMod(instanceId, mod); return true })
   ipcMain.handle('instances:remove-mod', (_e: any, instanceId: string, modId: string) => { instanceStore.removeMod(instanceId, modId); return true })
   ipcMain.handle('instances:update', (_e: any, instanceId: string, updates: any) => { instanceStore.updateInstance(instanceId, updates); return true })
+  ipcMain.handle('instances:toggle-mod', (_e: any, instanceId: string, modId: string) => { instanceStore.toggleMod(instanceId, modId); return true })
+  ipcMain.handle('instances:list-content-files', (_e: any, instanceId: string, contentType: string) => instanceStore.listContentFiles(instanceId, contentType))
+  ipcMain.handle('instances:delete-mod-file', (_e: any, instanceId: string, contentType: string, filename: string) => instanceStore.deleteModFile(instanceId, contentType, filename))
+  ipcMain.handle('instances:toggle-mod-file', (_e: any, instanceId: string, contentType: string, filename: string) => instanceStore.toggleModFile(instanceId, contentType, filename))
+
+  ipcMain.handle('servers:list', () => serverStore.getAll())
+  ipcMain.handle('servers:add', (_e: any, config: any) => serverStore.add(config))
+  ipcMain.handle('servers:update', (_e: any, id: string, updates: any) => { serverStore.update(id, updates); return true })
+  ipcMain.handle('servers:remove', (_e: any, id: string) => { serverStore.remove(id); return true })
+  ipcMain.handle('servers:set-last-played', (_e: any, id: string) => { serverStore.setLastPlayed(id); return true })
+  ipcMain.handle('servers:ping', async (_e: any, address: string) => {
+    const { host, port } = parseServerAddress(address)
+    return pingServer(host, port)
+  })
 
   ipcMain.handle('minecraft:get-version-manifest', async () => minecraftSvc.getVersionManifest())
   ipcMain.handle('minecraft:get-version-json', async (_e: any, versionId: string) => minecraftSvc.getVersionJson(versionId))

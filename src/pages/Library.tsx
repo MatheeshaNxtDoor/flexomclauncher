@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useInstanceStore, GameInstance } from '../stores/instanceStore'
 import CreateInstanceModal from '../components/CreateInstanceModal'
+import InstanceManagerModal from '../components/InstanceManagerModal'
 
 export default function Library() {
   const { instances, isLoading, loadInstances, recentlyPlayed, launchInstance, setupInstance, setupProgress } = useInstanceStore()
   const [showCreate, setShowCreate] = useState(false)
+  const [managingInstance, setManagingInstance] = useState<GameInstance | null>(null)
   const [launching, setLaunching] = useState<string | null>(null)
   const [settingUp, setSettingUp] = useState<string | null>(null)
   const [installedMap, setInstalledMap] = useState<Record<string, boolean>>({})
@@ -98,7 +100,7 @@ export default function Library() {
       {recentlyPlayed && (
         <div className="mb-8">
           <h2 className="text-sm font-medium text-surface-400 mb-3">Continue Playing</h2>
-          <div className="relative rounded-xl overflow-hidden bg-surface-800/50 border border-surface-700/50">
+          <div className="relative rounded-xl overflow-hidden bg-surface-800/50 border border-surface-700/50 cursor-pointer" onClick={() => setManagingInstance(recentlyPlayed)}>
             <div className="h-48 relative">
               <div className="absolute inset-0" style={{
                 background: `linear-gradient(135deg, ${recentlyPlayed.iconColor}20, ${recentlyPlayed.iconColor}05)`
@@ -119,7 +121,7 @@ export default function Library() {
                 </p>
               </div>
               <button
-                onClick={() => handleAction(recentlyPlayed.id)}
+                onClick={(e) => { e.stopPropagation(); handleAction(recentlyPlayed.id) }}
                 disabled={launching === recentlyPlayed.id || settingUp === recentlyPlayed.id}
                 className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all disabled:opacity-50 shadow-lg ${
                   runningMap[recentlyPlayed.id]
@@ -171,12 +173,14 @@ export default function Library() {
               isRunning={runningMap[instance.id] ?? false}
               setupStatus={setupProgress[instance.id]}
               onAction={() => handleAction(instance.id)}
+              onManage={() => setManagingInstance(instance)}
             />
           ))}
         </div>
       </div>
 
       {showCreate && <CreateInstanceModal onClose={() => setShowCreate(false)} />}
+      {managingInstance && <InstanceManagerModal instance={managingInstance} onClose={() => setManagingInstance(null)} />}
     </div>
   )
 }
@@ -189,6 +193,7 @@ function InstanceCard({
   isRunning,
   setupStatus,
   onAction,
+  onManage,
 }: {
   instance: GameInstance
   isLaunching: boolean
@@ -197,6 +202,7 @@ function InstanceCard({
   isRunning: boolean
   setupStatus?: string
   onAction: () => void
+  onManage: () => void
 }) {
   const { deleteInstance } = useInstanceStore()
   const [showMenu, setShowMenu] = useState(false)
@@ -209,7 +215,7 @@ function InstanceCard({
     !isInstalled ? 'Install' : 'Play'
 
   return (
-    <div className="group relative bg-surface-800/50 border border-surface-700/50 rounded-xl overflow-hidden hover:border-surface-600/50 transition-all duration-200">
+    <div className="group relative bg-surface-800/50 border border-surface-700/50 rounded-xl overflow-hidden hover:border-surface-600/50 transition-all duration-200 cursor-pointer" onClick={onManage}>
       <div className="h-32 relative">
         <div className="absolute inset-0" style={{
           background: `linear-gradient(135deg, ${instance.iconColor}15, ${instance.iconColor}05)`
@@ -220,13 +226,50 @@ function InstanceCard({
             className="w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold shadow-lg"
             style={{ backgroundColor: `${instance.iconColor}20`, color: instance.iconColor }}
           >
-            {instance.name.charAt(0)}
+            {instance.modLoader === 'vanilla' ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <rect x="7" y="7" width="3" height="3"/>
+                <rect x="14" y="7" width="3" height="3"/>
+                <rect x="7" y="14" width="3" height="3"/>
+                <rect x="14" y="14" width="3" height="3"/>
+              </svg>
+            ) : instance.modLoader === 'fabric' ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 4h16v4H4z"/>
+                <path d="M4 12h16v4H4z"/>
+                <path d="M8 8v8"/>
+                <path d="M16 8v8"/>
+              </svg>
+            ) : instance.modLoader === 'forge' ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                <path d="M2 17l10 5 10-5"/>
+                <path d="M2 12l10 5 10-5"/>
+              </svg>
+            ) : instance.modLoader === 'neoforge' ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                <path d="M2 17l10 5 10-5"/>
+                <path d="M2 12l10 5 10-5"/>
+                <line x1="12" y1="2" x2="12" y2="22"/>
+              </svg>
+            ) : instance.modLoader === 'quilt' ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="7" height="7" rx="1"/>
+                <rect x="14" y="3" width="7" height="7" rx="1"/>
+                <rect x="3" y="14" width="7" height="7" rx="1"/>
+                <rect x="14" y="14" width="7" height="7" rx="1"/>
+              </svg>
+            ) : (
+              instance.name.charAt(0)
+            )}
           </div>
         </div>
         <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="relative">
             <button
-              onClick={() => setShowMenu(!showMenu)}
+              onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu) }}
               className="w-7 h-7 rounded-md bg-surface-800/80 hover:bg-surface-700 flex items-center justify-center text-surface-400 hover:text-white transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -284,7 +327,7 @@ function InstanceCard({
           </div>
         ) : (
           <button
-            onClick={onAction}
+            onClick={(e) => { e.stopPropagation(); onAction() }}
             disabled={isLoadingState}
             className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
               isRunning

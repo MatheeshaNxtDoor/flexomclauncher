@@ -26,6 +26,10 @@ export interface ElectronAPI {
     removeMod: (instanceId: string, modId: string) => Promise<boolean>
     update: (instanceId: string, updates: any) => Promise<boolean>
     isInstalled: (instanceId: string) => Promise<boolean>
+    toggleMod: (instanceId: string, modId: string) => Promise<boolean>
+    listContentFiles: (instanceId: string, contentType: string) => Promise<Array<{ filename: string; disabled: boolean }>>
+    deleteModFile: (instanceId: string, contentType: string, filename: string) => Promise<boolean>
+    toggleModFile: (instanceId: string, contentType: string, filename: string) => Promise<string | null>
   }
   instance: {
     setup: (instanceId: string) => Promise<any>
@@ -87,6 +91,14 @@ export interface ElectronAPI {
   app: {
     getInfo: () => Promise<{ version: string; name: string; isDev: boolean }>
   }
+  servers: {
+    list: () => Promise<any[]>
+    add: (config: any) => Promise<any>
+    update: (id: string, updates: any) => Promise<boolean>
+    remove: (id: string) => Promise<boolean>
+    setLastPlayed: (id: string) => Promise<boolean>
+    ping: (address: string) => Promise<any>
+  }
 }
 
 function onEvent(channel: string, callback: (...args: any[]) => void) {
@@ -123,6 +135,10 @@ const electronAPI: ElectronAPI = {
     removeMod: (instanceId: string, modId: string) => ipcRenderer.invoke('instances:remove-mod', instanceId, modId),
     update: (instanceId: string, updates: any) => ipcRenderer.invoke('instances:update', instanceId, updates),
     isInstalled: (instanceId: string) => ipcRenderer.invoke('instances:is-installed', instanceId),
+    toggleMod: (instanceId: string, modId: string) => ipcRenderer.invoke('instances:toggle-mod', instanceId, modId),
+    listContentFiles: (instanceId: string, contentType: string) => ipcRenderer.invoke('instances:list-content-files', instanceId, contentType),
+    deleteModFile: (instanceId: string, contentType: string, filename: string) => ipcRenderer.invoke('instances:delete-mod-file', instanceId, contentType, filename),
+    toggleModFile: (instanceId: string, contentType: string, filename: string) => ipcRenderer.invoke('instances:toggle-mod-file', instanceId, contentType, filename),
   },
   instance: {
     setup: (instanceId: string) => ipcRenderer.invoke('instance:setup', instanceId),
@@ -183,6 +199,14 @@ const electronAPI: ElectronAPI = {
   },
   app: {
     getInfo: () => ipcRenderer.invoke('app:get-info'),
+  },
+  servers: {
+    list: () => ipcRenderer.invoke('servers:list'),
+    add: (config: any) => ipcRenderer.invoke('servers:add', config),
+    update: (id: string, updates: any) => ipcRenderer.invoke('servers:update', id, updates),
+    remove: (id: string) => ipcRenderer.invoke('servers:remove', id),
+    setLastPlayed: (id: string) => ipcRenderer.invoke('servers:set-last-played', id),
+    ping: (address: string) => ipcRenderer.invoke('servers:ping', address),
   },
 }
 
