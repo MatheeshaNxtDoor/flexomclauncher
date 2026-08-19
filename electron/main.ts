@@ -144,6 +144,7 @@ function initializeServices() {
   ipcMain.handle('instances:set-last-played', (_e: any, id: string) => { instanceStore.setLastPlayed(id); return true })
   ipcMain.handle('instances:add-mod', (_e: any, instanceId: string, mod: any) => { instanceStore.addMod(instanceId, mod); return true })
   ipcMain.handle('instances:remove-mod', (_e: any, instanceId: string, modId: string) => { instanceStore.removeMod(instanceId, modId); return true })
+  ipcMain.handle('instances:update', (_e: any, instanceId: string, updates: any) => { instanceStore.updateInstance(instanceId, updates); return true })
 
   ipcMain.handle('minecraft:get-version-manifest', async () => minecraftSvc.getVersionManifest())
   ipcMain.handle('minecraft:get-version-json', async (_e: any, versionId: string) => minecraftSvc.getVersionJson(versionId))
@@ -184,6 +185,8 @@ function initializeServices() {
         instance.modLoaderVersion
       )
 
+      instanceStore.updateInstance(instanceId, { versionId: loaderResult.versionId })
+
       const clientJar = path.join(gameDir, 'versions', loaderResult.versionId, `${loaderResult.versionId}.jar`)
       if (!fs.existsSync(clientJar)) {
         const vanillaJar = path.join(gameDir, 'versions', instance.version, `${instance.version}.jar`)
@@ -217,17 +220,19 @@ function initializeServices() {
       log(`LAUNCH: gameDir=${gameDir} exists=${fs.existsSync(gameDir)}`)
       if (!fs.existsSync(gameDir)) throw new Error('Instance not set up. Run setup first.')
 
-      const versionJson = await minecraftSvc.getVersionJson(instance.version)
+      const effectiveVersionId = instance.versionId || instance.version
+      log(`LAUNCH: effectiveVersionId=${effectiveVersionId}`)
+      const versionJson = await minecraftSvc.getVersionJson(effectiveVersionId, gameDir)
       const librariesDir = path.join(gameDir, 'libraries')
       const classpath = minecraftSvc.buildClasspath(versionJson, librariesDir)
-      const clientJar = path.join(gameDir, 'versions', instance.version, `${instance.version}.jar`)
+      const clientJar = path.join(gameDir, 'versions', effectiveVersionId, `${effectiveVersionId}.jar`)
       log(`LAUNCH: clientJar=${clientJar} exists=${fs.existsSync(clientJar)}`)
       if (!fs.existsSync(clientJar)) throw new Error('Client jar not found. Run instance setup first.')
 
       const separator = process.platform === 'win32' ? ';' : ':'
       const fullClasspath = `${clientJar}${separator}${classpath}`
       const assetsDir = path.join(gameDir, 'assets')
-      const nativesDir = path.join(gameDir, 'versions', instance.version, 'natives')
+      const nativesDir = path.join(gameDir, 'versions', effectiveVersionId, 'natives')
 
       let authlibInjectorPath: string | undefined
       let authlibInjectorUrl: string | undefined
@@ -289,7 +294,8 @@ function initializeServices() {
   ipcMain.handle('instances:is-installed', (_e: any, instanceId: string) => {
     const instance = instanceStore.getInstance(instanceId)
     if (!instance) return false
-    const clientJar = path.join(instance.gameDirectory, 'versions', instance.version, `${instance.version}.jar`)
+    const effectiveVersionId = instance.versionId || instance.version
+    const clientJar = path.join(instance.gameDirectory, 'versions', effectiveVersionId, `${effectiveVersionId}.jar`)
     return fs.existsSync(clientJar)
   })
 

@@ -5,6 +5,7 @@ export interface GameInstance {
   id: string
   name: string
   version: string
+  versionId?: string
   modLoader: 'vanilla' | 'fabric' | 'forge' | 'neoforge' | 'quilt'
   modLoaderVersion?: string
   gameDirectory: string

@@ -24,6 +24,7 @@ export interface ElectronAPI {
     setLastPlayed: (instanceId: string) => Promise<boolean>
     addMod: (instanceId: string, mod: any) => Promise<boolean>
     removeMod: (instanceId: string, modId: string) => Promise<boolean>
+    update: (instanceId: string, updates: any) => Promise<boolean>
     isInstalled: (instanceId: string) => Promise<boolean>
   }
   instance: {
@@ -120,6 +121,7 @@ const electronAPI: ElectronAPI = {
     setLastPlayed: (instanceId: string) => ipcRenderer.invoke('instances:set-last-played', instanceId),
     addMod: (instanceId: string, mod: any) => ipcRenderer.invoke('instances:add-mod', instanceId, mod),
     removeMod: (instanceId: string, modId: string) => ipcRenderer.invoke('instances:remove-mod', instanceId, modId),
+    update: (instanceId: string, updates: any) => ipcRenderer.invoke('instances:update', instanceId, updates),
     isInstalled: (instanceId: string) => ipcRenderer.invoke('instances:is-installed', instanceId),
   },
   instance: {

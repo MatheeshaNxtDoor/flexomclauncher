@@ -7,6 +7,7 @@ export interface GameInstance {
   id: string
   name: string
   version: string
+  versionId?: string
   modLoader: 'vanilla' | 'fabric' | 'forge' | 'neoforge' | 'quilt'
   modLoaderVersion?: string
   gameDirectory: string
@@ -111,6 +112,14 @@ export class InstanceStore {
     const instance = this.data.instances.find((i) => i.id === id)
     if (instance) {
       instance.lastPlayed = Date.now()
+      this.save()
+    }
+  }
+
+  updateInstance(id: string, updates: Partial<GameInstance>) {
+    const instance = this.data.instances.find((i) => i.id === id)
+    if (instance) {
+      Object.assign(instance, updates)
       this.save()
     }
   }

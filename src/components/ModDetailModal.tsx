@@ -306,28 +306,6 @@ export default function ModDetailModal({ mod, onClose }: { mod: Mod; onClose: ()
               )}
             </div>
 
-            {selectedVersion && (
-              <div className="mb-4 p-2 rounded-lg bg-surface-800/50 border border-surface-700/30">
-                <div className="flex flex-wrap gap-1">
-                  {selectedVersion.game_versions?.map((gv: string) => (
-                    <span key={gv} className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">
-                      MC {gv}
-                    </span>
-                  ))}
-                  {selectedVersion.loaders?.map((l: string) => (
-                    <span key={l} className="text-[9px] px-1.5 py-0.5 rounded bg-flexo-500/10 text-flexo-400 capitalize">
-                      {l}
-                    </span>
-                  ))}
-                </div>
-                {selectedVersion.files?.[0] && (
-                  <p className="text-[9px] text-surface-500 mt-1 truncate">
-                    {selectedVersion.files[0].filename}
-                  </p>
-                )}
-              </div>
-            )}
-
             {installStatus && (
               <div className={`mb-3 p-2 rounded-lg text-xs ${
                 installStatus.includes('Failed')

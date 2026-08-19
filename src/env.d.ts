@@ -20,10 +20,12 @@ declare global {
         list: () => Promise<any[]>
         get: (instanceId: string) => Promise<any>
         create: (config: any) => Promise<any>
+        update: (instanceId: string, updates: any) => Promise<boolean>
         delete: (instanceId: string) => Promise<boolean>
         setLastPlayed: (instanceId: string) => Promise<boolean>
         addMod: (instanceId: string, mod: any) => Promise<boolean>
         removeMod: (instanceId: string, modId: string) => Promise<boolean>
+        update: (instanceId: string, updates: any) => Promise<boolean>
         isInstalled: (instanceId: string) => Promise<boolean>
       }
       instance: {

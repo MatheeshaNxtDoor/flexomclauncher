@@ -89,29 +89,50 @@ export class MinecraftService {
     return this.manifest!
   }
 
-  async getVersionJson(versionId: string): Promise<VersionJson> {
+  async getVersionJson(versionId: string, gameDir?: string): Promise<VersionJson> {
     const manifest = await this.getVersionManifest()
     const versionEntry = manifest.versions.find((v) => v.id === versionId)
-    if (!versionEntry) throw new Error(`Version ${versionId} not found`)
 
     const cachePath = path.join(this.cacheDir, 'versions', `${versionId}.json`)
     this.ensureDir(path.dirname(cachePath))
 
     if (fs.existsSync(cachePath)) {
-      return JSON.parse(fs.readFileSync(cachePath, 'utf-8'))
+      const cached: VersionJson = JSON.parse(fs.readFileSync(cachePath, 'utf-8'))
+      if (cached.inheritsFrom) {
+        const parent = await this.getVersionJson(cached.inheritsFrom, gameDir)
+        return this.mergeVersionJsons(parent, cached)
+      }
+      return cached
     }
 
-    const res = await fetch(versionEntry.url)
-    if (!res.ok) throw new Error(`Failed to fetch version JSON for ${versionId}`)
-    const versionJson: VersionJson = await res.json()
-    fs.writeFileSync(cachePath, JSON.stringify(versionJson))
+    if (versionEntry) {
+      const res = await fetch(versionEntry.url)
+      if (!res.ok) throw new Error(`Failed to fetch version JSON for ${versionId}`)
+      const versionJson: VersionJson = await res.json()
+      fs.writeFileSync(cachePath, JSON.stringify(versionJson))
 
-    if (versionJson.inheritsFrom) {
-      const parent = await this.getVersionJson(versionJson.inheritsFrom)
-      return this.mergeVersionJsons(parent, versionJson)
+      if (versionJson.inheritsFrom) {
+        const parent = await this.getVersionJson(versionJson.inheritsFrom, gameDir)
+        return this.mergeVersionJsons(parent, versionJson)
+      }
+      return versionJson
     }
 
-    return versionJson
+    if (gameDir) {
+      const localPath = path.join(gameDir, 'versions', versionId, `${versionId}.json`)
+      if (fs.existsSync(localPath)) {
+        const localJson: VersionJson = JSON.parse(fs.readFileSync(localPath, 'utf-8'))
+        fs.writeFileSync(cachePath, JSON.stringify(localJson))
+
+        if (localJson.inheritsFrom) {
+          const parent = await this.getVersionJson(localJson.inheritsFrom, gameDir)
+          return this.mergeVersionJsons(parent, localJson)
+        }
+        return localJson
+      }
+    }
+
+    throw new Error(`Version ${versionId} not found`)
   }
 
   private mergeVersionJsons(parent: VersionJson, child: VersionJson): VersionJson {
