@@ -5,14 +5,13 @@ import InstanceManagerModal from '../components/InstanceManagerModal'
 import ImportExistingModal from '../components/ImportExistingModal'
 
 export default function Library() {
-  const { instances, isLoading, loadInstances, recentlyPlayed, launchInstance, setupInstance, setupProgress } = useInstanceStore()
+  const { instances, isLoading, loadInstances, recentlyPlayed, launchInstance, setupInstance, setupProgress, runningInstances, setInstanceRunning, killInstance } = useInstanceStore()
   const [showCreate, setShowCreate] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [managingInstance, setManagingInstance] = useState<GameInstance | null>(null)
   const [launching, setLaunching] = useState<string | null>(null)
   const [settingUp, setSettingUp] = useState<string | null>(null)
   const [installedMap, setInstalledMap] = useState<Record<string, boolean>>({})
-  const [runningMap, setRunningMap] = useState<Record<string, boolean>>({})
 
   const refreshStates = useCallback(async () => {
     const newInstalled: Record<string, boolean> = {}
@@ -32,19 +31,18 @@ export default function Library() {
 
   useEffect(() => {
     const unsubExited = window.electronAPI.launcher.onGameExited((data: any) => {
-      setRunningMap((prev) => ({ ...prev, [data.instanceId]: false }))
+      setInstanceRunning(data.instanceId, false)
       refreshStates()
     })
     const unsubError = window.electronAPI.launcher.onGameError?.((data: any) => {
-      setRunningMap((prev) => ({ ...prev, [data.instanceId]: false }))
+      setInstanceRunning(data.instanceId, false)
     })
     return () => { unsubExited(); unsubError?.() }
-  }, [refreshStates])
+  }, [refreshStates, setInstanceRunning])
 
   const handleAction = async (id: string) => {
-    if (runningMap[id]) {
-      await window.electronAPI.launcher.kill(id)
-      setRunningMap((prev) => ({ ...prev, [id]: false }))
+    if (runningInstances[id]) {
+      await killInstance(id)
       return
     }
     if (!installedMap[id]) {
@@ -61,11 +59,10 @@ export default function Library() {
     }
     setLaunching(id)
     try {
-      setRunningMap((prev) => ({ ...prev, [id]: true }))
       await launchInstance(id)
     } catch (e: any) {
       alert(`Launch failed: ${e.message}`)
-      setRunningMap((prev) => ({ ...prev, [id]: false }))
+      setInstanceRunning(id, false)
     } finally {
       setLaunching(null)
     }
@@ -139,14 +136,14 @@ export default function Library() {
                 onClick={(e) => { e.stopPropagation(); handleAction(recentlyPlayed.id) }}
                 disabled={launching === recentlyPlayed.id || settingUp === recentlyPlayed.id}
                 className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all disabled:opacity-50 shadow-lg ${
-                  runningMap[recentlyPlayed.id]
+                  runningInstances[recentlyPlayed.id]
                     ? 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 shadow-red-500/10'
                     : 'bg-flexo-500 hover:bg-flexo-600 text-white shadow-flexo-500/25'
                 }`}
               >
                 {launching === recentlyPlayed.id || settingUp === recentlyPlayed.id ? (
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : runningMap[recentlyPlayed.id] ? (
+                ) : runningInstances[recentlyPlayed.id] ? (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                     <rect x="6" y="4" width="4" height="16"/>
                     <rect x="14" y="4" width="4" height="16"/>
@@ -164,7 +161,7 @@ export default function Library() {
                 )}
                 {launching === recentlyPlayed.id ? 'Launching...' :
                  settingUp === recentlyPlayed.id ? 'Installing...' :
-                 runningMap[recentlyPlayed.id] ? 'Stop' :
+                 runningInstances[recentlyPlayed.id] ? 'Stop' :
                  !installedMap[recentlyPlayed.id] ? 'Install' : 'Play'}
               </button>
             </div>
@@ -185,7 +182,7 @@ export default function Library() {
               isLaunching={launching === instance.id}
               isSettingUp={settingUp === instance.id}
               isInstalled={installedMap[instance.id] ?? false}
-              isRunning={runningMap[instance.id] ?? false}
+              isRunning={runningInstances[instance.id] ?? false}
               setupStatus={setupProgress[instance.id]}
               onAction={() => handleAction(instance.id)}
               onManage={() => setManagingInstance(instance)}

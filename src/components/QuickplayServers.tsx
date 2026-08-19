@@ -6,7 +6,7 @@ import ServerPlayModal from './ServerPlayModal'
 
 export default function QuickplayServers() {
   const { servers, loadServers, pingServer, removeServer, updateServer } = useServerStore()
-  const { instances, loadInstances, launchInstance, setupInstance, setupProgress } = useInstanceStore()
+  const { instances, loadInstances, launchInstance, setupInstance, setupProgress, runningInstances, setInstanceRunning, killInstance } = useInstanceStore()
   const [showAdd, setShowAdd] = useState(false)
   const [playingServer, setPlayingServer] = useState<ServerEntry | null>(null)
   const [pingCache, setPingCache] = useState<Record<string, ServerPingInfo>>({})
@@ -18,6 +18,16 @@ export default function QuickplayServers() {
     loadServers()
     loadInstances()
   }, [])
+
+  useEffect(() => {
+    const unsubExited = window.electronAPI.launcher.onGameExited((data: any) => {
+      setInstanceRunning(data.instanceId, false)
+    })
+    const unsubError = window.electronAPI.launcher.onGameError?.((data: any) => {
+      setInstanceRunning(data.instanceId, false)
+    })
+    return () => { unsubExited(); unsubError?.() }
+  }, [setInstanceRunning])
 
   const refreshPings = useCallback(async () => {
     const newCache: Record<string, ServerPingInfo> = {}
@@ -41,6 +51,14 @@ export default function QuickplayServers() {
     if (server.instanceId) {
       const instance = instances.find(i => i.id === server.instanceId)
       if (instance) {
+        if (runningInstances[server.instanceId]) {
+          try {
+            await killInstance(server.instanceId)
+          } catch (err: any) {
+            alert(`Stop failed: ${err.message}`)
+          }
+          return
+        }
         try {
           await launchInstance(server.instanceId)
         } catch (err: any) {
@@ -99,11 +117,14 @@ export default function QuickplayServers() {
               const ping = pingCache[server.id]
               const isExpanded = expandedServer === server.id
               const instance = instances.find(i => i.id === server.instanceId)
+              const isRunning = server.instanceId ? runningInstances[server.instanceId] : false
 
               return (
                 <div
                   key={server.id}
-                  className="group relative bg-surface-800/30 border border-surface-700/50 rounded-lg overflow-hidden hover:border-surface-600/50 transition-all"
+                  className={`group relative bg-surface-800/30 border rounded-lg overflow-hidden transition-all ${
+                    isRunning ? 'border-red-500/30 bg-red-500/5' : 'border-surface-700/50 hover:border-surface-600/50'
+                  }`}
                 >
                   <button
                     onClick={() => handlePlay(server)}
@@ -122,7 +143,12 @@ export default function QuickplayServers() {
                       <p className="text-xs font-medium text-white truncate">{server.name}</p>
                       {ping ? (
                         <div className="flex items-center gap-1.5">
-                          {ping.online ? (
+                          {isRunning ? (
+                            <>
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0 animate-pulse" />
+                              <span className="text-[10px] text-red-400">Playing</span>
+                            </>
+                          ) : ping.online ? (
                             <>
                               <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
                               <span className="text-[10px] text-surface-500 truncate">
@@ -140,10 +166,24 @@ export default function QuickplayServers() {
                         <span className="text-[10px] text-surface-500">Pinging...</span>
                       )}
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
+                      {isRunning ? (
+                        <div className="w-6 h-6 rounded flex items-center justify-center">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="text-red-400">
+                            <rect x="6" y="4" width="4" height="16"/>
+                            <rect x="14" y="4" width="4" height="16"/>
+                          </svg>
+                        </div>
+                      ) : (
+                        <div className="w-6 h-6 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="text-surface-400">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                          </svg>
+                        </div>
+                      )}
                       <button
                         onClick={(e) => { e.stopPropagation(); setShowMenu(showMenu === server.id ? null : server.id) }}
-                        className="w-5 h-5 rounded flex items-center justify-center text-surface-500 hover:text-surface-300 hover:bg-surface-700 transition-colors"
+                        className="w-5 h-5 rounded flex items-center justify-center text-surface-500 hover:text-surface-300 hover:bg-surface-700 transition-colors opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                           <circle cx="12" cy="5" r="2"/>

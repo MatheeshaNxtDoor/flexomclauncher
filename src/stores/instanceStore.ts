@@ -23,6 +23,7 @@ interface InstanceState {
   instances: GameInstance[]
   isLoading: boolean
   setupProgress: Record<string, string>
+  runningInstances: Record<string, boolean>
   loadInstances: () => Promise<void>
   createInstance: (config: {
     name: string
@@ -33,6 +34,8 @@ interface InstanceState {
   deleteInstance: (id: string) => Promise<void>
   setupInstance: (id: string) => Promise<void>
   launchInstance: (id: string) => Promise<void>
+  killInstance: (id: string) => Promise<void>
+  setInstanceRunning: (id: string, running: boolean) => void
   recentlyPlayed: GameInstance | null
 }
 
@@ -43,6 +46,7 @@ export const useInstanceStore = create<InstanceState>((set, get) => ({
   isLoading: false,
   recentlyPlayed: null,
   setupProgress: {},
+  runningInstances: {},
 
   loadInstances: async () => {
     set({ isLoading: true })
@@ -146,9 +150,25 @@ export const useInstanceStore = create<InstanceState>((set, get) => ({
   },
 
   launchInstance: async (id: string) => {
+    set((state) => ({
+      runningInstances: { ...state.runningInstances, [id]: true },
+    }))
     await window.electronAPI.instances.setLastPlayed(id)
     await window.electronAPI.launcher.launch(id)
     const instances = await window.electronAPI.instances.list()
     set({ instances })
+  },
+
+  killInstance: async (id: string) => {
+    await window.electronAPI.launcher.kill(id)
+    set((state) => ({
+      runningInstances: { ...state.runningInstances, [id]: false },
+    }))
+  },
+
+  setInstanceRunning: (id: string, running: boolean) => {
+    set((state) => ({
+      runningInstances: { ...state.runningInstances, [id]: running },
+    }))
   },
 }))
