@@ -140,7 +140,14 @@ function initializeServices() {
   ipcMain.handle('instances:list', () => instanceStore.getAllInstances())
   ipcMain.handle('instances:get', (_e: any, id: string) => instanceStore.getInstance(id))
   ipcMain.handle('instances:create', (_e: any, config: any) => instanceStore.createInstance(config))
-  ipcMain.handle('instances:delete', (_e: any, id: string) => { instanceStore.deleteInstance(id); return true })
+  ipcMain.handle('instances:delete', (_e: any, id: string) => {
+    const instance = instanceStore.getInstance(id)
+    if (instance?.gameDirectory && fs.existsSync(instance.gameDirectory)) {
+      try { fs.rmSync(instance.gameDirectory, { recursive: true, force: true }) } catch {}
+    }
+    instanceStore.deleteInstance(id)
+    return true
+  })
   ipcMain.handle('instances:set-last-played', (_e: any, id: string) => { instanceStore.setLastPlayed(id); return true })
   ipcMain.handle('instances:add-mod', (_e: any, instanceId: string, mod: any) => { instanceStore.addMod(instanceId, mod); return true })
   ipcMain.handle('instances:remove-mod', (_e: any, instanceId: string, modId: string) => { instanceStore.removeMod(instanceId, modId); return true })
@@ -159,6 +166,13 @@ function initializeServices() {
 
     sendToRenderer('instance:setup-progress', { instanceId, step: `Downloading ${loaderLabel} ${instance.version}...` })
     const versionJson = await minecraftSvc.getVersionJson(instance.version)
+
+    const versionDir = path.join(gameDir, 'versions', instance.version)
+    if (!fs.existsSync(versionDir)) fs.mkdirSync(versionDir, { recursive: true })
+    const versionJsonPath = path.join(versionDir, `${instance.version}.json`)
+    if (!fs.existsSync(versionJsonPath)) {
+      fs.writeFileSync(versionJsonPath, JSON.stringify(versionJson, null, 2))
+    }
 
     sendToRenderer('instance:setup-progress', { instanceId, step: 'Downloading client jar...' })
     await minecraftSvc.downloadClientJar(versionJson, gameDir)
@@ -224,6 +238,32 @@ function initializeServices() {
 
       const effectiveVersionId = instance.versionId || instance.version
       log(`LAUNCH: effectiveVersionId=${effectiveVersionId}`)
+
+      const effectiveVersionDir = path.join(gameDir, 'versions', effectiveVersionId)
+      const effectiveVersionJson = path.join(effectiveVersionDir, `${effectiveVersionId}.json`)
+      if (!fs.existsSync(effectiveVersionJson)) {
+        log(`LAUNCH: version JSON missing, fetching...`)
+        try {
+          const vJson = await minecraftSvc.getVersionJson(effectiveVersionId, gameDir)
+          if (!fs.existsSync(effectiveVersionDir)) fs.mkdirSync(effectiveVersionDir, { recursive: true })
+          fs.writeFileSync(effectiveVersionJson, JSON.stringify(vJson, null, 2))
+        } catch (e: any) {
+          log(`LAUNCH: failed to fetch version JSON: ${e.message}`)
+        }
+      }
+
+      const vanillaVersionDir = path.join(gameDir, 'versions', instance.version)
+      const vanillaVersionJson = path.join(vanillaVersionDir, `${instance.version}.json`)
+      if (!fs.existsSync(vanillaVersionJson) && effectiveVersionId !== instance.version) {
+        log(`LAUNCH: vanilla version JSON missing, fetching...`)
+        try {
+          const vJson = await minecraftSvc.getVersionJson(instance.version, gameDir)
+          if (!fs.existsSync(vanillaVersionDir)) fs.mkdirSync(vanillaVersionDir, { recursive: true })
+          fs.writeFileSync(vanillaVersionJson, JSON.stringify(vJson, null, 2))
+        } catch (e: any) {
+          log(`LAUNCH: failed to fetch vanilla version JSON: ${e.message}`)
+        }
+      }
 
       const clientJar = path.join(gameDir, 'versions', effectiveVersionId, `${effectiveVersionId}.jar`)
       log(`LAUNCH: clientJar=${clientJar} exists=${fs.existsSync(clientJar)}`)
