@@ -7,17 +7,17 @@
 git add -A
 
 # 2. Commit
-git commit -m "fix: mod loader launch, instance versionId, remove version history UI"
+git commit -m "fix: launch Args"
 
 # 3. Update package.json version (replace X.X.X with the new version)
-npm version X.X.X --no-git-tag-version
+npm version 1.0.13 --no-git-tag-version
 
 # 4. Commit the version bump
 git add package.json
-git commit -m "chore: bump version to X.X.X"
+git commit -m "chore: bump version to 1.0.13"
 
 # 5. Tag and push (triggers GitHub Actions build + release)
-git tag vX.X.X
+git tag v1.0.13
 git push origin main --tags
 ```
 

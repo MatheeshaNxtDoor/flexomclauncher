@@ -210,6 +210,8 @@ function initializeServices() {
   ipcMain.handle('launcher:launch', async (_e: any, instanceId: string) => {
     log(`LAUNCH START: instanceId=${instanceId}`)
     try {
+      const { launch } = await import('@xmcl/core')
+
       const account = accountStore.getCurrentAccount()
       if (!account) { log('LAUNCH FAIL: No account selected'); throw new Error('No account selected') }
       const instance = instanceStore.getInstance(instanceId)
@@ -222,57 +224,55 @@ function initializeServices() {
 
       const effectiveVersionId = instance.versionId || instance.version
       log(`LAUNCH: effectiveVersionId=${effectiveVersionId}`)
-      const versionJson = await minecraftSvc.getVersionJson(effectiveVersionId, gameDir)
-      const librariesDir = path.join(gameDir, 'libraries')
-      const classpath = minecraftSvc.buildClasspath(versionJson, librariesDir)
+
       const clientJar = path.join(gameDir, 'versions', effectiveVersionId, `${effectiveVersionId}.jar`)
       log(`LAUNCH: clientJar=${clientJar} exists=${fs.existsSync(clientJar)}`)
       if (!fs.existsSync(clientJar)) throw new Error('Client jar not found. Run instance setup first.')
-
-      const separator = process.platform === 'win32' ? ';' : ':'
-      const fullClasspath = `${clientJar}${separator}${classpath}`
-      const assetsDir = path.join(gameDir, 'assets')
-      const nativesDir = path.join(gameDir, 'versions', effectiveVersionId, 'natives')
-
-      let authlibInjectorPath: string | undefined
-      let authlibInjectorUrl: string | undefined
-      if (account.type === 'discord') {
-        authlibInjectorPath = await authlibSvc.downloadAuthlibInjector()
-        authlibInjectorUrl = account.authServer || 'https://auth.flexo.lol/authlib-injector'
-        log(`LAUNCH: authlibInjector=${authlibInjectorPath} url=${authlibInjectorUrl}`)
-      }
-
-      const javaArgs = minecraftSvc.buildJvmArgs(versionJson, {
-        classpath: fullClasspath, gameDir, nativesDir,
-        maxMemory: instance.maxMemory || 4096, minMemory: instance.minMemory || 1024,
-        javaPath: 'java', authlibInjectorPath, authlibInjectorUrl, jvmArgs: instance.jvmArgs,
-      })
-
-      const gameArgs = minecraftSvc.buildGameArgs(versionJson, {
-        username: account.playerName, uuid: account.playerUuid, accessToken: account.accessToken,
-        userType: account.userType || 'mojang', gameDir, assetsDir, properties: account.properties,
-      })
 
       const javaPath = await launcherSvc.findJava()
       log(`LAUNCH: javaPath=${javaPath}`)
       if (!javaPath) throw new Error('Java not found.')
 
-      const mainClass = versionJson.mainClassClient || versionJson.mainClass
-      log(`LAUNCH: mainClass=${mainClass}`)
+      const launchOpts: any = {
+        gamePath: gameDir,
+        javaPath,
+        version: effectiveVersionId,
+        maxMemory: instance.maxMemory || 4096,
+        minMemory: instance.minMemory || 1024,
+        launcherName: 'Flexo',
+        launcherBrand: '1.0.0',
+        extraJVMArgs: [
+          '-Djava.net.preferIPv4Stack=true',
+          ...(instance.jvmArgs || []),
+        ],
+        gameProfile: {
+          name: account.playerName,
+          id: account.playerUuid,
+        },
+        accessToken: account.accessToken || '',
+        userType: (account.userType as any) || 'msa',
+        properties: account.properties || {},
+      }
 
-      const { spawn } = await import('child_process')
-      const proc = spawn(javaPath, [...javaArgs, mainClass, ...gameArgs], {
-        cwd: gameDir, stdio: ['ignore', 'pipe', 'pipe'],
-      })
+      if (account.type === 'discord') {
+        const authlibInjectorPath = await authlibSvc.downloadAuthlibInjector()
+        const authlibInjectorUrl = account.authServer || 'https://auth.flexo.lol/authlib-injector'
+        log(`LAUNCH: authlibInjector=${authlibInjectorPath} url=${authlibInjectorUrl}`)
+        launchOpts.yggdrasilAgent = {
+          jar: authlibInjectorPath,
+          server: authlibInjectorUrl,
+        }
+      }
+
+      log(`LAUNCH: calling @xmcl/core launch()`)
+      const proc = await launch(launchOpts)
       log(`LAUNCH: process spawned pid=${proc.pid}`)
 
       proc.stdout?.on('data', (data: Buffer) => {
-        const msg = data.toString()
-        sendToRenderer('launcher:game-log', { instanceId, stream: 'stdout', data: msg })
+        sendToRenderer('launcher:game-log', { instanceId, stream: 'stdout', data: data.toString() })
       })
       proc.stderr?.on('data', (data: Buffer) => {
-        const msg = data.toString()
-        sendToRenderer('launcher:game-log', { instanceId, stream: 'stderr', data: msg })
+        sendToRenderer('launcher:game-log', { instanceId, stream: 'stderr', data: data.toString() })
       })
       proc.on('error', (err) => {
         log(`LAUNCH ERROR: ${err.message}`)
