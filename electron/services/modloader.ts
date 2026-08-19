@@ -90,6 +90,7 @@ export class ModLoaderService {
 
     const loaderVersion = loader.loader.version
     const intermediaryVersion = loader.intermediary.version
+    const launcherMeta = loader.launcherMeta
 
     onProgress?.(`Downloading Fabric loader ${loaderVersion}...`)
 
@@ -113,47 +114,41 @@ export class ModLoaderService {
     onProgress?.('Creating Fabric version profile...')
     const versionId = `${gameVersion}-fabric-${loaderVersion}`
 
+    const libraries: any[] = [
+      {
+        name: `net.fabricmc:intermediary:${intermediaryVersion}:v2`,
+        url: 'https://maven.fabricmc.net/',
+      },
+      {
+        name: `net.fabricmc:fabric-loader:${loaderVersion}`,
+        url: 'https://maven.fabricmc.net/',
+      },
+    ]
+
+    if (launcherMeta?.libraries?.common) {
+      for (const lib of launcherMeta.libraries.common) {
+        libraries.push({
+          name: lib.name,
+          url: lib.url || 'https://maven.fabricmc.net/',
+          sha1: lib.sha1,
+          size: lib.size,
+        })
+      }
+    }
+
+    const mainClass = launcherMeta?.mainClass?.client || 'net.fabricmc.loader.impl.launch.knot.KnotClient'
+
     const versionJson = {
       id: versionId,
       inheritsFrom: gameVersion,
       type: 'release',
-      mainClass: 'net.fabricmc.loader.impl.launch.knot.KnotClient',
+      mainClass,
       arguments: {
         game: [
-          '--assetIndex', '${assets_index_name}',
-          '--assetsDir', '${assets_root}',
-          '--uuid', '${auth_uuid}',
-          '--username', '${auth_player_name}',
-          '--accessToken', '${auth_access_token}',
-          '--userType', '${auth_user_type}',
           '--versionType', 'Fabric',
         ],
-        jvm: [
-          { rules: [{ features: { is_demo_user: false } }], value: '-Dfabric.remapClasspathFile=${fabric_classpath}' },
-        ],
       },
-      libraries: [
-        {
-          name: `net.fabricmc:intermediary:${intermediaryVersion}:v2`,
-          url: 'https://maven.fabricmc.net/',
-          md5: undefined as string | undefined,
-        },
-        {
-          name: `net.fabricmc:fabric-loader:${loaderVersion}`,
-          url: 'https://maven.fabricmc.net/',
-          md5: undefined as string | undefined,
-        },
-        {
-          name: 'net.fabricmc:sponge-mixin:0.15.11+mixin.0.8.5',
-          url: 'https://maven.fabricmc.net/',
-          md5: undefined as string | undefined,
-        },
-        {
-          name: `net.fabricmc:fabric-language-kotlin:1.12.3+kotlin2.0.21`,
-          url: 'https://maven.fabricmc.net/',
-          md5: undefined as string | undefined,
-        },
-      ],
+      libraries,
     }
 
     const versionsDir = path.join(gameDir, 'versions')
@@ -281,6 +276,7 @@ export class ModLoaderService {
       : loaderData[0]
 
     const loaderVersion = loader.loader.version
+    const launcherMeta = loader.launcherMeta
 
     onProgress?.(`Downloading Quilt loader ${loaderVersion}...`)
 
@@ -295,32 +291,37 @@ export class ModLoaderService {
     onProgress?.('Creating Quilt version profile...')
     const versionId = `${gameVersion}-quilt-${loaderVersion}`
 
+    const libraries: any[] = [
+      {
+        name: `org.quiltmc:quilt-loader:${loaderVersion}`,
+        url: 'https://maven.quiltmc.org/repository/release/',
+      },
+    ]
+
+    if (launcherMeta?.libraries?.common) {
+      for (const lib of launcherMeta.libraries.common) {
+        libraries.push({
+          name: lib.name,
+          url: lib.url || 'https://maven.quiltmc.org/repository/release/',
+          sha1: lib.sha1,
+          size: lib.size,
+        })
+      }
+    }
+
+    const mainClass = launcherMeta?.mainClass?.client || 'org.quiltmc.loader.impl.launch.knot.KnotClient'
+
     const versionJson = {
       id: versionId,
       inheritsFrom: gameVersion,
       type: 'release',
-      mainClass: 'org.quiltmc.loader.impl.launch.knot.KnotClient',
+      mainClass,
       arguments: {
         game: [
-          '--assetIndex', '${assets_index_name}',
-          '--assetsDir', '${assets_root}',
-          '--uuid', '${auth_uuid}',
-          '--username', '${auth_player_name}',
-          '--accessToken', '${auth_access_token}',
-          '--userType', '${auth_user_type}',
           '--versionType', 'Quilt',
         ],
       },
-      libraries: [
-        {
-          name: `org.quiltmc:quilt-loader:${loaderVersion}`,
-          url: 'https://maven.quiltmc.org/repository/release/',
-        },
-        {
-          name: 'org.quiltmc:quilt-sponge-mixin:0.8.5+build.3',
-          url: 'https://maven.quiltmc.org/repository/release/',
-        },
-      ],
+      libraries,
     }
 
     const versionsDir = path.join(gameDir, 'versions')

@@ -201,6 +201,15 @@ function initializeServices() {
 
       instanceStore.updateInstance(instanceId, { versionId: loaderResult.versionId })
 
+      const loaderVersionJsonPath = path.join(gameDir, 'versions', loaderResult.versionId, `${loaderResult.versionId}.json`)
+      if (fs.existsSync(loaderVersionJsonPath)) {
+        const loaderVersionJson = JSON.parse(fs.readFileSync(loaderVersionJsonPath, 'utf-8'))
+        sendToRenderer('instance:setup-progress', { instanceId, step: `Downloading ${loaderLabel} libraries...` })
+        await minecraftSvc.downloadLibraries(loaderVersionJson, gameDir, (progress: any) => {
+          sendToRenderer('instance:setup-progress', { instanceId, step: `${loaderLabel} libraries: ${progress.percent}%` })
+        })
+      }
+
       const clientJar = path.join(gameDir, 'versions', loaderResult.versionId, `${loaderResult.versionId}.jar`)
       if (!fs.existsSync(clientJar)) {
         const vanillaJar = path.join(gameDir, 'versions', instance.version, `${instance.version}.jar`)
