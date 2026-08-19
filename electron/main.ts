@@ -306,7 +306,13 @@ function initializeServices() {
       }
 
       log(`LAUNCH: calling @xmcl/core launch()`)
-      const proc = await launch(launchOpts)
+      const { generateArguments } = await import('@xmcl/core')
+      const args = await generateArguments(launchOpts)
+      log(`LAUNCH: command args=${JSON.stringify(args)}`)
+      const { spawn } = await import('child_process')
+      const proc = spawn(args[0], args.slice(1), {
+        cwd: gameDir, stdio: ['ignore', 'pipe', 'pipe'],
+      })
       log(`LAUNCH: process spawned pid=${proc.pid}`)
 
       proc.stdout?.on('data', (data: Buffer) => {
