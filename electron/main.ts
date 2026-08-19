@@ -292,6 +292,7 @@ function initializeServices() {
         accessToken: account.accessToken || '',
         userType: (account.userType as any) || 'msa',
         properties: account.properties || {},
+        prechecks: [],
       }
 
       if (account.type === 'discord') {

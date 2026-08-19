@@ -7,17 +7,17 @@
 git add -A
 
 # 2. Commit
-git commit -m "fix: Instance Deletation, JSON issue"
+git commit -m "fix: SHA1 Check"
 
 # 3. Update package.json version (replace X.X.X with the new version)
-npm version 1.0.14 --no-git-tag-version
+npm version 1.0.15 --no-git-tag-version
 
 # 4. Commit the version bump
 git add package.json
-git commit -m "chore: bump version to 1.0.14"
+git commit -m "chore: bump version to 1.0.15"
 
 # 5. Tag and push (triggers GitHub Actions build + release)
-git tag v1.0.14
+git tag v1.0.15
 git push origin main --tags
 ```
 
