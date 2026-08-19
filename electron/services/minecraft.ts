@@ -278,10 +278,15 @@ export class MinecraftService {
         resolvedLibs.push(targetPath)
       } else if (lib.url) {
         const parts = lib.name.split(':')
-        const libPath = parts[0].replace(/\./g, '/') + '/' + parts[1] + '/' + parts[2] + '/' + parts[1] + '-' + parts[2] + '.jar'
+        const groupPath = parts[0].replace(/\./g, '/')
+        let libPath = `${groupPath}/${parts[1]}/${parts[2]}/${parts[1]}-${parts[2]}`
+        if (parts.length > 3) {
+          libPath += `-${parts[3]}`
+        }
+        libPath += '.jar'
         const targetPath = path.join(librariesDir, libPath)
         const url = lib.url.endsWith('/') ? lib.url : lib.url + '/'
-        toDownload.push({ lib: { ...lib, downloads: { artifact: { path: libPath, sha1: '', size: 0, url: url + libPath } } }, targetPath })
+        toDownload.push({ lib: { ...lib, downloads: { artifact: { path: libPath, sha1: lib.downloads?.artifact?.sha1 || '', size: lib.downloads?.artifact?.size || 0, url: url + libPath } } }, targetPath })
         resolvedLibs.push(targetPath)
       }
     }

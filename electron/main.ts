@@ -364,10 +364,14 @@ function initializeServices() {
       log(`LAUNCH: process spawned pid=${proc.pid}`)
 
       proc.stdout?.on('data', (data: Buffer) => {
-        sendToRenderer('launcher:game-log', { instanceId, stream: 'stdout', data: data.toString() })
+        const msg = data.toString()
+        log(`GAME STDOUT [${instanceId}]: ${msg}`)
+        sendToRenderer('launcher:game-log', { instanceId, stream: 'stdout', data: msg })
       })
       proc.stderr?.on('data', (data: Buffer) => {
-        sendToRenderer('launcher:game-log', { instanceId, stream: 'stderr', data: data.toString() })
+        const msg = data.toString()
+        log(`GAME STDERR [${instanceId}]: ${msg}`)
+        sendToRenderer('launcher:game-log', { instanceId, stream: 'stderr', data: msg })
       })
       proc.on('error', (err) => {
         log(`LAUNCH ERROR: ${err.message}`)
