@@ -150,7 +150,7 @@ const electronAPI: ElectronAPI = {
     onSetupProgress: (callback) => onEvent('instance:setup-progress', callback),
   },
   launcher: {
-    launch: (instanceId: string) => ipcRenderer.invoke('launcher:launch', instanceId),
+    launch: (instanceId: string, serverAddress?: string) => ipcRenderer.invoke('launcher:launch', instanceId, serverAddress),
     getJavaPath: () => ipcRenderer.invoke('launcher:get-java-path'),
     kill: (instanceId: string) => ipcRenderer.invoke('launcher:kill', instanceId),
     isRunning: (instanceId: string) => ipcRenderer.invoke('launcher:is-running', instanceId),

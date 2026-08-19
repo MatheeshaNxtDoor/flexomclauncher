@@ -268,7 +268,7 @@ function initializeServices() {
     return { success: true }
   })
 
-  ipcMain.handle('launcher:launch', async (_e: any, instanceId: string) => {
+  ipcMain.handle('launcher:launch', async (_e: any, instanceId: string, serverAddress?: string) => {
     log(`LAUNCH START: instanceId=${instanceId}`)
     try {
       const { launch } = await import('@xmcl/core')
@@ -340,6 +340,7 @@ function initializeServices() {
         userType: (account.userType as any) || 'msa',
         properties: account.properties || {},
         prechecks: [],
+        ...(serverAddress ? { extraGameArgs: ['--server', serverAddress] } : {}),
       }
 
       if (account.type === 'discord') {

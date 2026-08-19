@@ -60,7 +60,7 @@ export default function QuickplayServers() {
           return
         }
         try {
-          await launchInstance(server.instanceId)
+          await launchInstance(server.instanceId, server.address)
         } catch (err: any) {
           alert(`Launch failed: ${err.message}`)
         }

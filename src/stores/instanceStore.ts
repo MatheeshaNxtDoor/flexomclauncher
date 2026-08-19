@@ -33,7 +33,7 @@ interface InstanceState {
   }) => Promise<GameInstance>
   deleteInstance: (id: string) => Promise<void>
   setupInstance: (id: string) => Promise<void>
-  launchInstance: (id: string) => Promise<void>
+  launchInstance: (id: string, serverAddress?: string) => Promise<void>
   killInstance: (id: string) => Promise<void>
   setInstanceRunning: (id: string, running: boolean) => void
   recentlyPlayed: GameInstance | null
@@ -149,12 +149,12 @@ export const useInstanceStore = create<InstanceState>((set, get) => ({
     }
   },
 
-  launchInstance: async (id: string) => {
+  launchInstance: async (id: string, serverAddress?: string) => {
     set((state) => ({
       runningInstances: { ...state.runningInstances, [id]: true },
     }))
     await window.electronAPI.instances.setLastPlayed(id)
-    await window.electronAPI.launcher.launch(id)
+    await window.electronAPI.launcher.launch(id, serverAddress)
     const instances = await window.electronAPI.instances.list()
     set({ instances })
   },

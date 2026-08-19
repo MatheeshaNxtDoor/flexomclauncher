@@ -36,7 +36,7 @@ declare global {
         onSetupProgress: (callback: (data: any) => void) => () => void
       }
       launcher: {
-        launch: (instanceId: string) => Promise<any>
+        launch: (instanceId: string, serverAddress?: string) => Promise<any>
         getJavaPath: () => Promise<string | null>
         kill: (instanceId: string) => Promise<boolean>
         isRunning: (instanceId: string) => Promise<boolean>
